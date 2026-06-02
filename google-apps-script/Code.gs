@@ -25,14 +25,20 @@ function headers_() {
   return { apikey: c.key, Authorization: 'Bearer ' + c.key, 'Content-Type': 'application/json' };
 }
 
-/** Run once. Loads Products, fills Orders, and installs the triggers. */
+/** Run once. Loads Products, fills the read-only tabs, installs the triggers. */
 function setup() {
   pullProducts();
-  pullOrders();
+  refreshAll();
   ScriptApp.getProjectTriggers().forEach(function (t) { ScriptApp.deleteTrigger(t); });
-  ScriptApp.newTrigger('pullOrders').timeBased().everyMinutes(5).create();
+  ScriptApp.newTrigger('refreshAll').timeBased().everyMinutes(5).create();
   ScriptApp.newTrigger('onEditProducts').forSpreadsheet(SpreadsheetApp.getActive()).onEdit().create();
-  SpreadsheetApp.getActive().toast('Setup done: Orders auto-refresh every 5 min, Products edits push to the site.');
+  SpreadsheetApp.getActive().toast('Setup done: Orders + Movements auto-refresh every 5 min, Products edits push to the site.');
+}
+
+/** Refresh all read-only views (called by the 5-min trigger). */
+function refreshAll() {
+  pullOrders();
+  pullMovements();
 }
 
 /** Orders: Supabase → "Orders" sheet (read-only view, rewritten each run). */
@@ -55,6 +61,25 @@ function pullOrders() {
     var cu = o.customer || {};
     return [o.order_code, o.created_at, cu.name || '', cu.phone || '', cu.email || '',
             items, o.delivery || '', o.pay_pref || '', addr, o.total || 0, o.step || 0, o.proof_url || ''];
+  });
+  sh.getRange(2, 1, data.length, header.length).setValues(data);
+}
+
+/** Stock movements: Supabase → "Movements" sheet (read-only ledger). */
+function pullMovements() {
+  var c = cfg_();
+  var sh = SpreadsheetApp.getActive().getSheetByName('Movements');
+  if (!sh) return; // tab is optional
+  var res = UrlFetchApp.fetch(c.url + '/rest/v1/stock_movements?select=*&order=created_at.desc&limit=500', {
+    headers: headers_(), muteHttpExceptions: true,
+  });
+  var rows = JSON.parse(res.getContentText());
+  var header = ['created_at', 'product_id', 'delta', 'reason', 'order_code', 'note'];
+  sh.clearContents();
+  sh.getRange(1, 1, 1, header.length).setValues([header]);
+  if (!rows.length) return;
+  var data = rows.map(function (m) {
+    return [m.created_at, m.product_id, m.delta, m.reason, m.order_code || '', m.note || ''];
   });
   sh.getRange(2, 1, data.length, header.length).setValues(data);
 }
@@ -99,14 +124,29 @@ function onEditProducts(e) {
     }),
   });
 
-  // inventory: qty (upsert; DB trigger then refreshes the in/low/out label)
+  // inventory: qty (upsert; DB trigger then refreshes the in/low/out label).
+  // Also log the manual change to stock_movements as an 'adjustment'.
   if (v[3] !== '' && v[3] !== null) {
+    var newQty = Number(v[3]) || 0;
+    var cur = UrlFetchApp.fetch(c.url + '/rest/v1/inventory?product_id=eq.' + encodeURIComponent(id) + '&select=qty', {
+      headers: headers_(), muteHttpExceptions: true,
+    });
+    var arr = JSON.parse(cur.getContentText());
+    var oldQty = (arr && arr[0]) ? Number(arr[0].qty) : null;
+
     UrlFetchApp.fetch(c.url + '/rest/v1/inventory', {
       method: 'post',
       headers: Object.assign({ Prefer: 'resolution=merge-duplicates' }, headers_()),
       muteHttpExceptions: true,
-      payload: JSON.stringify({ product_id: id, qty: Number(v[3]) || 0 }),
+      payload: JSON.stringify({ product_id: id, qty: newQty }),
     });
+
+    if (oldQty !== null && newQty !== oldQty) {
+      UrlFetchApp.fetch(c.url + '/rest/v1/stock_movements', {
+        method: 'post', headers: headers_(), muteHttpExceptions: true,
+        payload: JSON.stringify({ product_id: id, delta: newQty - oldQty, reason: 'adjustment', note: 'sheet edit' }),
+      });
+    }
   }
   SpreadsheetApp.getActive().toast('Synced "' + id + '" to the site.');
 }

@@ -5,7 +5,8 @@ Two-way sync between the admin Google Sheet and the Supabase database.
 | Data | Direction | Behaviour |
 |------|-----------|-----------|
 | Orders | DB → Sheet | `Orders` tab auto-refreshes every 5 min (read-only view) |
-| Products / inventory | Sheet → DB | Editing `Products` tab pushes to the live site instantly |
+| Stock movements | DB → Sheet | `Movements` tab — sales + manual adjustments ledger (read-only, optional tab) |
+| Products / inventory | Sheet → DB | Editing `Products` tab pushes to the live site instantly; qty changes are logged to `Movements` |
 
 ## Setup (once)
 
@@ -15,7 +16,7 @@ Two-way sync between the admin Google Sheet and the Supabase database.
    - `SUPABASE_URL` = `https://ovxhiclfsboqhmyfgfip.supabase.co`
    - `SERVICE_KEY` = the **service_role** key (Supabase → Project Settings → API → `service_role`).
      ⚠️ This key bypasses security. It lives ONLY here (Google's servers), never in the website or GitHub.
-4. Make sure the spreadsheet has two tabs named exactly **`Orders`** and **`Products`**.
+4. Make sure the spreadsheet has tabs named exactly **`Orders`**, **`Products`**, and (optional) **`Movements`**.
 5. Back in the editor, select the `setup` function and click **Run**. Authorize when prompted.
    - This loads the products, fills the orders, and installs the triggers.
 
