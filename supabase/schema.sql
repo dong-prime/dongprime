@@ -227,9 +227,10 @@ security definer
 set search_path = public
 as $$
 declare
-  v_code  text;
-  v_order public.orders;
-  v_item  jsonb;
+  v_code   text;
+  v_order  public.orders;
+  v_item   jsonb;
+  v_status text;
 begin
   -- generate a unique DP-XXXXX code
   loop
@@ -237,10 +238,15 @@ begin
     exit when not exists (select 1 from public.orders where order_code = v_code);
   end loop;
 
+  -- Initial status by type: COD needs no upfront payment, so it skips straight
+  -- to "confirmed"; prepaid (GCash/card) starts at "awaiting_payment" so the
+  -- customer can pay and upload their receipt right away.
+  v_status := case when p_delivery = 'cod' then 'confirmed' else 'awaiting_payment' end;
+
   insert into public.orders
     (order_code, user_id, customer, items, address, meet, pay_pref, delivery, status, notes, courier, total)
   values
-    (v_code, auth.uid(), p_customer, p_items, p_address, p_meet, p_pay_pref, p_delivery, 'received', p_notes, 'J&T Express', coalesce(p_total, 0))
+    (v_code, auth.uid(), p_customer, p_items, p_address, p_meet, p_pay_pref, p_delivery, v_status, p_notes, 'J&T Express', coalesce(p_total, 0))
   returning * into v_order;
 
   -- decrement stock and log a 'sale' movement per line item

@@ -1797,19 +1797,14 @@ export default function App() {
               {!activeOrder ? (
                 <>
                   <button className="back" onClick={() => go("home")}><ArrowLeft size={15}/>Home</button>
-                  <h2 className="title" style={{fontSize:24}}>Track order</h2>
-                  <p className="subtitle">Enter your order number from your confirmation email, or pick one from recent orders.</p>
-
-                  <div className="field" style={{marginTop:18}}>
-                    <label><Search size={12}/>Order number</label>
-                    <input value={trackInput} placeholder="Enter order number" onChange={(e) => setTrackInput(e.target.value)} />
-                  </div>
-                  <button className="btn primary" onClick={lookup}>Track order</button>
-                  {trackMsg && <div className="notice" style={{marginTop:12,borderColor:"rgba(195,86,86,.5)",color:"#E79A9A",background:"rgba(195,86,86,.08)"}}>{trackMsg}</div>}
+                  <h2 className="title" style={{fontSize:24}}>{user ? "My orders" : "Track order"}</h2>
+                  <p className="subtitle">
+                    {user ? "Tap an order to see its current status." : "Enter your order number from your confirmation, or pick a recent order."}
+                  </p>
 
                   {recentOrders.length > 0 && (
                     <>
-                      <div className="section-label">Recent orders</div>
+                      {user && <div className="section-label">Your orders</div>}
                       {recentOrders.map((o) => (
                         <button className="product-card" key={o.id} onClick={() => openTrack(o)}>
                           <div className="thumb"><ProductThumb product={itemProduct(o.items[0] || {})} size={42}/></div>
@@ -1820,10 +1815,20 @@ export default function App() {
                     </>
                   )}
 
-                  <div className="badge-grid">
-                    <div className="mini-card"><ShieldCheck size={20}/><h4>Secure Checkout</h4><p>Clear confirmation flow.</p></div>
-                    <div className="mini-card"><Package size={20}/><h4>Discreet Packaging</h4><p>Private and careful handling.</p></div>
+                  <div className="section-label">Track by order number</div>
+                  <div className="field">
+                    <label><Search size={12}/>Order number</label>
+                    <input value={trackInput} placeholder="Enter order number" onChange={(e) => setTrackInput(e.target.value)} />
                   </div>
+                  <button className="btn primary" onClick={lookup}>Track order</button>
+                  {trackMsg && <div className="notice" style={{marginTop:12,borderColor:"rgba(195,86,86,.5)",color:"#E79A9A",background:"rgba(195,86,86,.08)"}}>{trackMsg}</div>}
+
+                  {recentOrders.length === 0 && (
+                    <div className="badge-grid">
+                      <div className="mini-card"><ShieldCheck size={20}/><h4>Secure Checkout</h4><p>Clear confirmation flow.</p></div>
+                      <div className="mini-card"><Package size={20}/><h4>Discreet Packaging</h4><p>Private and careful handling.</p></div>
+                    </div>
+                  )}
                 </>
               ) : (
                 <>
