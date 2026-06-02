@@ -155,7 +155,7 @@ const BANK_ACCOUNT = "XXX-XXX-XXXX";
 const PREPAID = ["gcash", "bank"];
 const isPrepaid = (payPref) => PREPAID.includes(payPref);
 // Payment methods available per delivery method.
-const paymentsFor = (delivery) => (delivery === "cod" ? ["cash", "bank"] : ["gcash", "bank"]);
+const paymentsFor = (delivery) => (delivery === "cod" ? ["cash"] : ["gcash", "bank"]);
 const PAY_LABELS = {
   gcash: { t: "GCash", d: "Send to our GCash, then upload the receipt" },
   cash: { t: "Cash", d: "Pay the rider in cash on arrival" },
