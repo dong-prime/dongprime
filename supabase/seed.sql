@@ -23,19 +23,19 @@ values
    'Research compound',
    'Klow 80 mg is positioned as a premium research compound for catalog demonstration and research-use-only presentation. It is supplied in sealed packaging with a clean luxury vial identity, suitable for product-listing, order-flow, and educational demo use.',
    '80 mg · per vial', 'Recovery research',
-   '{"Single vial"}', 'in', 3500, '/assets/klow-80mg.png', 3),
+   '{"Single vial","Box option"}', 'in', 3500, '/assets/klow-80mg.png', 3),
 
   ('ghk-cu-50mg', 'GHK-Cu 50 mg', 'GHK-CU', '50mg', 'Skin',
    'Copper peptide, skin & repair research',
    'Premium research-grade GHK-Cu supplied in a sealed 50 mg vial for laboratory research use only. Commonly referenced in cosmetic-science and repair-pathway research contexts. This catalog copy avoids medical claims and is intended for demo and educational product presentation only.',
    '50 mg · per vial', 'Skin / repair research',
-   '{"Single vial"}', 'in', 2500, '/assets/ghk-cu-50mg.png', 4),
+   '{"Single vial","Box option"}', 'in', 2500, '/assets/ghk-cu-50mg.png', 4),
 
   ('nad-glutathione', 'NAD+ 250 mg / Glutathione 200 mg', 'NAD+ / GLUTATHIONE', '250mg / 200mg', 'Cellular',
    'Cellular energy & antioxidant research blend',
    'Premium research-use-only blend containing NAD+ 250 mg and Glutathione 200 mg. Presented for cellular-energy and antioxidant-pathway research discussions in a sealed vial format. No wellness, treatment, or performance claims are implied.',
    'NAD+ 250 mg / Glutathione 200 mg · per vial', 'Cellular / antioxidant research',
-   '{"Single vial"}', 'in', 4000, '/assets/nad-glutathione.png', 5),
+   '{"Single vial","Box option"}', 'in', 4000, '/assets/nad-glutathione.png', 5),
 
   ('cjc-ipa-5mg-5mg', 'CJC-1295 5 mg + Ipamorelin 5 mg', 'CJC-1295 + IPAMORELIN', '5mg + 5mg', 'Performance',
    'GHRH + GH secretagogue research blend',

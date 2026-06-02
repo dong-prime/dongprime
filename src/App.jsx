@@ -154,6 +154,14 @@ const BOX_UNITS = 10;
 const isBox = (fmt) => /box/i.test(fmt || "");
 const formatPrice = (product, fmt) => (Number(product?.price) || 0) * (isBox(fmt) ? BOX_UNITS : 1);
 const fmtDisplay = (fmt) => (isBox(fmt) ? `Box of ${BOX_UNITS}` : fmt);
+const unitsPerItem = (fmt) => (isBox(fmt) ? BOX_UNITS : 1);
+// Max orderable quantity for a product/format, given individual-unit stock.
+// Infinity when stock is unknown (e.g. Supabase not configured) — no cap.
+const maxQty = (product, fmt) => {
+  const sq = product?.stockQty;
+  if (sq == null) return Infinity;
+  return Math.max(0, Math.floor(sq / unitsPerItem(fmt)));
+};
 
 function LogoMark({ size = 36 }) {
   return (
@@ -313,10 +321,17 @@ function ShopCard({ product, onAdd, onOpen }) {
   const [added, setAdded] = useState(false);
   const fmt = product.formats[fmtIdx];
   const price = formatPrice(product, fmt);
-  const out = product.stock === "out";
+  const cap = maxQty(product, fmt);
+  const out = product.stock === "out" || cap < 1;
+
+  const pickFmt = (i) => {
+    setFmtIdx(i);
+    const c = maxQty(product, product.formats[i]);
+    setQty((q) => Math.min(Math.max(1, q), Math.max(1, c)));
+  };
 
   const add = () => {
-    onAdd(product, fmtIdx, qty);
+    onAdd(product, fmtIdx, Math.min(qty, cap));
     setAdded(true);
     setQty(1);
     setTimeout(() => setAdded(false), 1400);
@@ -339,7 +354,7 @@ function ShopCard({ product, onAdd, onOpen }) {
       {product.formats.length > 1 && (
         <div className="chips" style={{ margin: 0 }}>
           {product.formats.map((f, i) => (
-            <button key={f} className={i === fmtIdx ? "chip active" : "chip"} onClick={() => setFmtIdx(i)}>{fmtDisplay(f)}</button>
+            <button key={f} className={i === fmtIdx ? "chip active" : "chip"} onClick={() => pickFmt(i)}>{fmtDisplay(f)}</button>
           ))}
         </div>
       )}
@@ -351,12 +366,18 @@ function ShopCard({ product, onAdd, onOpen }) {
         <div className="stepper">
           <button onClick={() => setQty((q) => Math.max(1, q - 1))}><Minus size={14} /></button>
           <span>{qty}</span>
-          <button onClick={() => setQty((q) => q + 1)}><Plus size={14} /></button>
+          <button disabled={qty >= cap} onClick={() => setQty((q) => Math.min(q + 1, cap))}><Plus size={14} /></button>
         </div>
       </div>
 
+      {Number.isFinite(cap) && !out && (
+        <div className="footer-note" style={{ textAlign: "left", margin: 0 }}>
+          {cap} {isBox(fmt) ? "box(es)" : "vial(s)"} available
+        </div>
+      )}
+
       <button className="btn primary" disabled={out} style={{ padding: 11 }} onClick={add}>
-        {out ? "Out of stock" : added ? "Added ✓" : "Add to order"}
+        {out ? (product.stock === "out" ? "Out of stock" : "Not enough stock") : added ? "Added ✓" : "Add to order"}
       </button>
     </div>
   );
@@ -422,10 +443,14 @@ export default function App() {
     });
   };
 
-  const addToOrder = () => { addItem(active, fmtIdx, qty); go("order"); };
+  const addToOrder = () => { addItem(active, fmtIdx, Math.min(qty, maxQty(active, active.formats[fmtIdx]))); go("order"); };
 
   const bump = (key, d) => {
-    setSel((cur) => cur.map((i) => i.key === key ? { ...i, qty: i.qty + d } : i).filter((i) => i.qty > 0));
+    setSel((cur) => cur.map((i) => {
+      if (i.key !== key) return i;
+      const cap = maxQty(itemProduct(i), i.format);
+      return { ...i, qty: Math.min(i.qty + d, cap) };
+    }).filter((i) => i.qty > 0));
   };
 
   // Set user + autofill order details. No navigation (used on session restore).
@@ -1585,7 +1610,7 @@ export default function App() {
                   <div className="section-label">Format</div>
                   <div className="chips">
                     {active.formats.map((f, i) => (
-                      <button key={f} className={i === fmtIdx ? "chip active" : "chip"} onClick={() => setFmtIdx(i)}>{fmtDisplay(f)}</button>
+                      <button key={f} className={i === fmtIdx ? "chip active" : "chip"} onClick={() => { setFmtIdx(i); setQty((q) => Math.min(Math.max(1, q), Math.max(1, maxQty(active, active.formats[i])))); }}>{fmtDisplay(f)}</button>
                     ))}
                   </div>
                 </>
@@ -1596,11 +1621,25 @@ export default function App() {
                 <div className="stepper">
                   <button onClick={() => setQty((q) => Math.max(1, q - 1))}><Minus size={14}/></button>
                   <span>{qty}</span>
-                  <button onClick={() => setQty((q) => q + 1)}><Plus size={14}/></button>
+                  <button disabled={qty >= maxQty(active, active.formats[fmtIdx])} onClick={() => setQty((q) => Math.min(q + 1, maxQty(active, active.formats[fmtIdx])))}><Plus size={14}/></button>
                 </div>
               </div>
 
-              <button className="btn primary" onClick={addToOrder}>Add to order</button>
+              {Number.isFinite(maxQty(active, active.formats[fmtIdx])) && active.stock !== "out" && (
+                <div className="footer-note" style={{textAlign:"left",marginTop:-10,marginBottom:12}}>
+                  {maxQty(active, active.formats[fmtIdx])} {isBox(active.formats[fmtIdx]) ? "box(es)" : "vial(s)"} available
+                </div>
+              )}
+
+              {(() => {
+                const c = maxQty(active, active.formats[fmtIdx]);
+                const o = active.stock === "out" || c < 1;
+                return (
+                  <button className="btn primary" disabled={o} onClick={addToOrder}>
+                    {o ? (active.stock === "out" ? "Out of stock" : "Not enough stock") : "Add to order"}
+                  </button>
+                );
+              })()}
               <a className="btn ghost" style={{marginTop:10}} href={wa(`Hi Dong Prime, I would like to ask about ${active.name}.`)} target="_blank" rel="noreferrer">
                 <MessageCircle size={16}/>Ask about this on WhatsApp
               </a>
@@ -1727,7 +1766,7 @@ export default function App() {
                 ))
               )}
 
-              <button className="link" style={{marginTop:12}} onClick={() => go("shop")}>+ Add more from catalog</button>
+              <button className="btn ghost" style={{marginTop:12}} onClick={() => go("shop")}><Plus size={16}/>Add more from catalog</button>
 
               <div className="section-label">Your details</div>
               <div className="field"><label><User size={12}/>Full name</label><input value={cust.name} placeholder="Juan dela Cruz" onChange={(e) => setCust({...cust, name:e.target.value})}/></div>

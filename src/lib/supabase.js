@@ -31,6 +31,9 @@ function rowToProduct(r) {
     formats: r.formats || [],
     stock: r.stock,
     price: r.price,
+    stockQty: Array.isArray(r.inventory)
+      ? (r.inventory[0]?.qty ?? null)
+      : (r.inventory?.qty ?? null),
   };
 }
 
@@ -40,7 +43,7 @@ export async function fetchProducts() {
   if (!supabase) return [];
   const { data, error } = await supabase
     .from("products")
-    .select("*")
+    .select("*, inventory(qty)")
     .eq("active", true)
     .order("sort_order", { ascending: true });
   if (error) {

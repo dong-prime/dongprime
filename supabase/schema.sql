@@ -165,8 +165,10 @@ create table if not exists public.inventory (
 );
 
 alter table public.inventory enable row level security;
--- (no anon/authenticated policies on purpose — only service_role / dashboard
---  may read or write inventory. Storefront reads the synced products.stock.)
+-- Public READ of quantity (so the storefront can cap orders at available stock).
+-- Writes stay owner-only (service_role / dashboard / Apps Script).
+drop policy if exists "inventory public read" on public.inventory;
+create policy "inventory public read" on public.inventory for select using (true);
 
 -- Keep products.stock label in sync with the real quantity.
 create or replace function public.sync_product_stock()
@@ -233,6 +235,7 @@ declare
   v_order  public.orders;
   v_item   jsonb;
   v_status text;
+  v_units  integer;
 begin
   -- generate a unique DP-XXXXX code
   loop
@@ -251,15 +254,17 @@ begin
     (v_code, auth.uid(), p_customer, p_items, p_address, p_meet, p_pay_pref, p_delivery, v_status, p_notes, 'J&T Express', coalesce(p_total, 0))
   returning * into v_order;
 
-  -- decrement stock and log a 'sale' movement per line item
+  -- decrement stock (in individual units; a box is 10 units) + log the sale
   for v_item in select * from jsonb_array_elements(p_items)
   loop
+    v_units := coalesce((v_item->>'qty')::int, 1)
+             * (case when v_item->>'format' ilike '%box%' then 10 else 1 end);
     update public.inventory
-      set qty = greatest(0, qty - coalesce((v_item->>'qty')::int, 1))
+      set qty = greatest(0, qty - v_units)
       where product_id = v_item->>'id';
     if found then
       insert into public.stock_movements (product_id, delta, reason, order_code)
-      values (v_item->>'id', -coalesce((v_item->>'qty')::int, 1), 'sale', v_code);
+      values (v_item->>'id', -v_units, 'sale', v_code);
     end if;
   end loop;
 
@@ -324,7 +329,7 @@ language plpgsql
 security definer
 set search_path = public
 as $$
-declare v_item jsonb;
+declare v_item jsonb; v_units integer;
 begin
   -- Only auto-restock when goods never shipped. A delivered order that gets
   -- refunded does NOT auto-restock (handle any physical return manually).
@@ -332,12 +337,14 @@ begin
      and old.status not in ('cancelled', 'refunded', 'shipped', 'delivered') then
     for v_item in select * from jsonb_array_elements(new.items)
     loop
+      v_units := coalesce((v_item->>'qty')::int, 1)
+               * (case when v_item->>'format' ilike '%box%' then 10 else 1 end);
       update public.inventory
-        set qty = qty + coalesce((v_item->>'qty')::int, 1)
+        set qty = qty + v_units
         where product_id = v_item->>'id';
       if found then
         insert into public.stock_movements (product_id, delta, reason, order_code)
-        values (v_item->>'id', coalesce((v_item->>'qty')::int, 1), 'cancellation', new.order_code);
+        values (v_item->>'id', v_units, 'cancellation', new.order_code);
       end if;
     end loop;
   end if;
