@@ -94,3 +94,47 @@ export function toAppUser(authUser, profile) {
     savedAddress: profile?.saved_address || meta.saved_address || null,
   };
 }
+
+// ─── Orders ───────────────────────────────────────────────────────────────
+
+// Create an order via the place_order RPC (also decrements stock server-side).
+// Returns { data: orderRow } or { error }.
+export async function placeOrder(payload) {
+  if (!supabase) return { error: { message: "Supabase not configured" } };
+  const { data, error } = await supabase.rpc("place_order", payload);
+  return { data: Array.isArray(data) ? data[0] : data, error };
+}
+
+// Look up a single order by its DP-XXXXX code (works for guests).
+export async function lookupOrder(code) {
+  if (!supabase) return null;
+  const { data, error } = await supabase.rpc("get_order_by_code", { p_code: code });
+  if (error) { console.error("lookupOrder failed:", error.message); return null; }
+  const row = Array.isArray(data) ? data[0] : data;
+  return row || null;
+}
+
+// All orders for a logged-in user, newest first.
+export async function fetchMyOrders(userId) {
+  if (!supabase || !userId) return [];
+  const { data, error } = await supabase
+    .from("orders")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+  if (error) { console.error("fetchMyOrders failed:", error.message); return []; }
+  return data || [];
+}
+
+// Upload a payment receipt to the private bucket and attach it to the order.
+export async function uploadPaymentProof(orderCode, file) {
+  if (!supabase) return { error: { message: "Supabase not configured" } };
+  const ext = (file.name.split(".").pop() || "dat").toLowerCase();
+  const path = `${orderCode}/${Date.now()}.${ext}`;
+  const { error } = await supabase.storage
+    .from("payment-proofs")
+    .upload(path, file, { upsert: false });
+  if (error) return { error };
+  await supabase.rpc("attach_payment_proof", { p_code: orderCode, p_path: path });
+  return { path };
+}

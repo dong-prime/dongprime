@@ -9,6 +9,7 @@ import {
 import {
   supabase, fetchProducts,
   signUpUser, signInUser, signOutUser, getProfile, toAppUser,
+  placeOrder, lookupOrder, fetchMyOrders, uploadPaymentProof,
 } from "./lib/supabase";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -317,8 +318,11 @@ export default function App() {
   const [agree, setAgree] = useState(false);
   const [proof, setProof] = useState("");
   const [orders, setOrders] = useState([]);
+  const [myOrders, setMyOrders] = useState([]);
   const [activeOrder, setActiveOrder] = useState(null);
   const [trackInput, setTrackInput] = useState("");
+  const [trackMsg, setTrackMsg] = useState("");
+  const [proofBusy, setProofBusy] = useState(false);
 
   const count = sel.reduce((s, i) => s + i.qty, 0);
   const subtotal = sel.reduce((s, i) => s + (i.price || 0) * i.qty, 0);
@@ -449,62 +453,113 @@ export default function App() {
     go("home");
   };
 
-  const confirmOrder = () => {
-    const id = "DP-" + Math.random().toString(36).slice(2, 6).toUpperCase();
-    const order = {
-      id,
-      items: sel,
-      address: isMeetup ? null : effAddr,
-      meet: isMeetup ? meet : null,
-      customer: cust,
-      payPref,
-      delivery,
-      steps: trackStepsFor(delivery, payPref),
-      step: delivery === "cod" ? 1 : 0,
-      courier: "J&T Express",
-      trackingNo: "JT-PH-8842100377",
-      placedAt: new Date().toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" }),
-      total,
-    };
+  // Map an orders-table row (snake_case) into the shape the UI uses. Tracking
+  // steps are derived (not stored), and placedAt is formatted from created_at.
+  const dbRowToOrder = (r) => ({
+    id: r.order_code,
+    items: r.items || [],
+    address: r.address,
+    meet: r.meet,
+    customer: r.customer || {},
+    payPref: r.pay_pref,
+    delivery: r.delivery,
+    steps: trackStepsFor(r.delivery, r.pay_pref),
+    step: r.step ?? 0,
+    courier: r.courier || "J&T Express",
+    trackingNo: r.tracking_no || "",
+    proofUrl: r.proof_url || "",
+    placedAt: r.created_at
+      ? new Date(r.created_at).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" })
+      : "",
+    total: r.total || 0,
+  });
+
+  const confirmOrder = async () => {
+    const itemsPayload = sel.map((i) => ({
+      id: i.id, name: i.name, labelName: i.labelName, dose: i.dose,
+      format: i.format, qty: i.qty, price: i.price,
+    }));
+
+    const { data, error } = await placeOrder({
+      p_customer: cust,
+      p_items: itemsPayload,
+      p_address: isMeetup ? null : effAddr,
+      p_meet: isMeetup ? meet : null,
+      p_pay_pref: payPref,
+      p_delivery: delivery,
+      p_total: total,
+    });
+
+    // Build the local order: from the saved DB row, or a local fallback if the
+    // DB write failed (so the customer still gets a confirmation + WhatsApp).
+    const order = (!error && data)
+      ? dbRowToOrder(data)
+      : {
+          id: "DP-" + Math.random().toString(36).slice(2, 7).toUpperCase(),
+          items: itemsPayload,
+          address: isMeetup ? null : effAddr,
+          meet: isMeetup ? meet : null,
+          customer: cust,
+          payPref, delivery,
+          steps: trackStepsFor(delivery, payPref),
+          step: delivery === "cod" ? 1 : 0,
+          courier: "J&T Express",
+          trackingNo: "",
+          placedAt: new Date().toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" }),
+          total,
+        };
+    if (error) console.error("place_order failed, used local fallback:", error.message);
+
     setOrders((o) => [order, ...o]);
     setActiveOrder(order);
     setSel([]);
     setNotes("");
     setAgree(false);
     setProof("");
+    fetchProducts().then((rows) => { if (rows.length) setProducts(rows); }); // refresh stock
     go("done");
   };
 
-  const demoOrders = useMemo(() => {
-    const fallbackItems = [
-      { key: "d1", id: PRODUCTS[1].id, name: PRODUCTS[1].name, labelName: PRODUCTS[1].labelName, dose: PRODUCTS[1].dose, format: "Single vial", qty: 1, price: PRODUCTS[1].price },
-      { key: "d2", id: PRODUCTS[3].id, name: PRODUCTS[3].name, labelName: PRODUCTS[3].labelName, dose: PRODUCTS[3].dose, format: "Single vial", qty: 1, price: PRODUCTS[3].price },
-    ];
-    return orders.length ? orders : [
-      {
-        id: "DP-7K2Q9",
-        items: fallbackItems,
-        customer: { name: "Kyle", phone: "+63 917 555 0101", email: "kyle@email.com" },
-        address: { region: "Metro Manila (NCR)", city: "Quezon City", barangay: "Loyola Heights", street: "12 Esteban Abada St.", zip: "1108" },
-        delivery: "courier",
-        payPref: "gcash",
-        steps: trackStepsFor("courier", "gcash"),
-        step: 4,
-        courier: "J&T Express",
-        trackingNo: "JT-PH-8842100377",
-        placedAt: "Jun 1, 2026",
-        total: PRODUCTS[1].price + PRODUCTS[3].price,
-      },
-    ];
-  }, [orders]);
+  // Load the logged-in user's orders from the DB.
+  useEffect(() => {
+    if (!user?.id) { setMyOrders([]); return; }
+    let active = true;
+    fetchMyOrders(user.id).then((rows) => {
+      if (active) setMyOrders(rows.map(dbRowToOrder));
+    });
+    return () => { active = false; };
+  }, [user]);
 
-  const openTrack = (o) => { setActiveOrder(o); setProof(""); go("track"); };
+  // Orders to show in lists: this session's + the user's saved ones, deduped.
+  const recentOrders = useMemo(() => {
+    const seen = new Set();
+    return [...orders, ...myOrders].filter((o) => {
+      if (seen.has(o.id)) return false;
+      seen.add(o.id);
+      return true;
+    });
+  }, [orders, myOrders]);
 
-  const lookup = () => {
-    const found = demoOrders.find((o) => o.id === trackInput.trim().toUpperCase());
-    setActiveOrder(found || demoOrders[0]);
-    setTrackInput("");
-    go("track");
+  const openTrack = (o) => { setActiveOrder(o); setProof(o.proofUrl || ""); setTrackMsg(""); go("track"); };
+
+  const lookup = async () => {
+    const code = trackInput.trim().toUpperCase();
+    if (!code) return;
+    setTrackMsg("");
+    const local = recentOrders.find((o) => o.id === code);
+    if (local) { setActiveOrder(local); setTrackInput(""); go("track"); return; }
+    const row = await lookupOrder(code);
+    if (row) { setActiveOrder(dbRowToOrder(row)); setTrackInput(""); go("track"); return; }
+    setTrackMsg(`No order found for "${code}". Check the code from your confirmation.`);
+  };
+
+  const handleProofUpload = async (file) => {
+    if (!file || !activeOrder) return;
+    setProofBusy(true);
+    const res = await uploadPaymentProof(activeOrder.id, file);
+    setProofBusy(false);
+    if (res.error) { setTrackMsg("Upload failed: " + res.error.message); return; }
+    setProof(file.name);
   };
 
   const itemProduct = (item) => products.find((p) => p.id === item.id) || products.find((p) => p.name === item.name) || products[0] || PRODUCTS[1];
@@ -1510,9 +1565,11 @@ export default function App() {
                   </div>
 
                   <div className="section-label">My orders</div>
-                  {demoOrders.map((o) => (
+                  {recentOrders.length === 0 ? (
+                    <div className="notice">No orders yet. Your orders will appear here after you place one.</div>
+                  ) : recentOrders.map((o) => (
                     <button className="product-card" key={o.id} onClick={() => openTrack(o)}>
-                      <div className="thumb"><ProductThumb product={itemProduct(o.items[0])} size={42}/></div>
+                      <div className="thumb"><ProductThumb product={itemProduct(o.items[0] || {})} size={42}/></div>
                       <div style={{flex:1}}>
                         <div className="pname">{o.id}</div>
                         <div className="pdesc">{o.placedAt} · {o.items.length} item(s)</div>
@@ -1704,7 +1761,7 @@ export default function App() {
               </div>
 
               <div className="notice">
-                A copy has been emailed to <b style={{color:"var(--ink)"}}>{activeOrder.customer.email}</b>. You can also find this under My Orders.
+                Save your order number <b style={{color:"var(--ink)"}}>{activeOrder.id}</b> to track this order anytime.{user ? " You can also find it under My Orders." : " We'll follow up on WhatsApp."}
               </div>
 
               <button className="btn primary" onClick={() => openTrack(activeOrder)}>Track this order <ChevronRight size={16}/></button>
@@ -1727,15 +1784,20 @@ export default function App() {
                     <input value={trackInput} placeholder="Enter order number" onChange={(e) => setTrackInput(e.target.value)} />
                   </div>
                   <button className="btn primary" onClick={lookup}>Track order</button>
+                  {trackMsg && <div className="notice" style={{marginTop:12,borderColor:"rgba(195,86,86,.5)",color:"#E79A9A",background:"rgba(195,86,86,.08)"}}>{trackMsg}</div>}
 
-                  <div className="section-label">Recent orders</div>
-                  {demoOrders.map((o) => (
-                    <button className="product-card" key={o.id} onClick={() => openTrack(o)}>
-                      <div className="thumb"><ProductThumb product={itemProduct(o.items[0])} size={42}/></div>
-                      <div style={{flex:1}}><div className="pname">{o.id}</div><div className="pdesc">{o.placedAt} · {o.delivery}</div></div>
-                      <ChevronRight size={16} color="var(--gold2)"/>
-                    </button>
-                  ))}
+                  {recentOrders.length > 0 && (
+                    <>
+                      <div className="section-label">Recent orders</div>
+                      {recentOrders.map((o) => (
+                        <button className="product-card" key={o.id} onClick={() => openTrack(o)}>
+                          <div className="thumb"><ProductThumb product={itemProduct(o.items[0] || {})} size={42}/></div>
+                          <div style={{flex:1}}><div className="pname">{o.id}</div><div className="pdesc">{o.placedAt} · {o.delivery}</div></div>
+                          <ChevronRight size={16} color="var(--gold2)"/>
+                        </button>
+                      ))}
+                    </>
+                  )}
 
                   <div className="badge-grid">
                     <div className="mini-card"><ShieldCheck size={20}/><h4>Secure Checkout</h4><p>Clear confirmation flow.</p></div>
@@ -1765,11 +1827,18 @@ export default function App() {
                             <p>{s.d}</p>
 
                             {current && s.upload && (
-                              <button className={proof ? "upload has" : "upload"} onClick={() => setProof("receipt-uploaded.png")}>
+                              <label className={proof ? "upload has" : "upload"} style={{cursor:"pointer"}}>
                                 <Upload size={18}/>
-                                {proof ? "Receipt uploaded" : "Upload receipt / proof of payment"}
+                                {proofBusy ? "Uploading…" : proof ? "Receipt uploaded ✓" : "Upload receipt / proof of payment"}
                                 <small>PNG, JPG or PDF max 10MB</small>
-                              </button>
+                                <input
+                                  type="file"
+                                  accept="image/*,application/pdf"
+                                  style={{display:"none"}}
+                                  disabled={proofBusy}
+                                  onChange={(e) => handleProofUpload(e.target.files?.[0])}
+                                />
+                              </label>
                             )}
 
                             {current && s.ship && (

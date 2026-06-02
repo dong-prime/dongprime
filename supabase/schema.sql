@@ -203,3 +203,87 @@ create table if not exists public.stock_movements (
 
 alter table public.stock_movements enable row level security;
 -- (no public policies — owner/dashboard only, same as inventory)
+
+-- ============================================================================
+-- PLACE ORDER (atomic: create order + decrement stock + log movements)
+--   Runs server-side (security definer) so it can touch the locked-down
+--   inventory table and generate a unique order code. Callable by guests too.
+-- ============================================================================
+create or replace function public.place_order(
+  p_customer jsonb,
+  p_items    jsonb,
+  p_address  jsonb,
+  p_meet     jsonb,
+  p_pay_pref text,
+  p_delivery text,
+  p_total    integer
+)
+returns public.orders
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_code  text;
+  v_order public.orders;
+  v_item  jsonb;
+  v_step  integer;
+begin
+  -- generate a unique DP-XXXXX code
+  loop
+    v_code := 'DP-' || upper(substr(md5(gen_random_uuid()::text), 1, 5));
+    exit when not exists (select 1 from public.orders where order_code = v_code);
+  end loop;
+
+  -- COD starts at "Confirmed" (step 1); others start at "Received" (step 0)
+  v_step := case when p_delivery = 'cod' then 1 else 0 end;
+
+  insert into public.orders
+    (order_code, user_id, customer, items, address, meet, pay_pref, delivery, step, courier, total)
+  values
+    (v_code, auth.uid(), p_customer, p_items, p_address, p_meet, p_pay_pref, p_delivery, v_step, 'J&T Express', coalesce(p_total, 0))
+  returning * into v_order;
+
+  -- decrement stock and log a 'sale' movement per line item
+  for v_item in select * from jsonb_array_elements(p_items)
+  loop
+    update public.inventory
+      set qty = greatest(0, qty - coalesce((v_item->>'qty')::int, 1))
+      where product_id = v_item->>'id';
+    if found then
+      insert into public.stock_movements (product_id, delta, reason, order_code)
+      values (v_item->>'id', -coalesce((v_item->>'qty')::int, 1), 'sale', v_code);
+    end if;
+  end loop;
+
+  return v_order;
+end;
+$$;
+
+grant execute on function public.place_order(jsonb,jsonb,jsonb,jsonb,text,text,integer) to anon, authenticated;
+
+-- ============================================================================
+-- ATTACH PAYMENT PROOF
+--   Lets a customer attach an uploaded receipt path to their order by code,
+--   without granting a broad UPDATE policy on the orders table.
+-- ============================================================================
+create or replace function public.attach_payment_proof(p_code text, p_path text)
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  update public.orders set proof_url = p_path where order_code = upper(trim(p_code));
+$$;
+
+grant execute on function public.attach_payment_proof(text, text) to anon, authenticated;
+
+-- ============================================================================
+-- STORAGE: allow uploading receipts to the private 'payment-proofs' bucket.
+--   (Create the bucket first in Dashboard → Storage. Reads stay restricted;
+--    the owner views receipts from the dashboard.)
+-- ============================================================================
+drop policy if exists "payment proof upload" on storage.objects;
+create policy "payment proof upload"
+  on storage.objects for insert to anon, authenticated
+  with check (bucket_id = 'payment-proofs');
