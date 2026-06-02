@@ -149,6 +149,12 @@ const blankAddr = { region: "", city: "", barangay: "", street: "", zip: "" };
 const peso = (n) => "₱" + Number(n || 0).toLocaleString("en-PH");
 const fmtAddr = (a) => [a.street, a.barangay && "Brgy. " + a.barangay, a.city, a.region].filter(Boolean).join(", ");
 
+// A "Box option" is a 10-pack priced at the single-unit price × 10.
+const BOX_UNITS = 10;
+const isBox = (fmt) => /box/i.test(fmt || "");
+const formatPrice = (product, fmt) => (Number(product?.price) || 0) * (isBox(fmt) ? BOX_UNITS : 1);
+const fmtDisplay = (fmt) => (isBox(fmt) ? `Box of ${BOX_UNITS}` : fmt);
+
 function LogoMark({ size = 36 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 64 64" fill="none" aria-hidden="true">
@@ -301,6 +307,61 @@ function ProductThumb({ product, size = 42 }) {
   );
 }
 
+function ShopCard({ product, onAdd, onOpen }) {
+  const [fmtIdx, setFmtIdx] = useState(0);
+  const [qty, setQty] = useState(1);
+  const [added, setAdded] = useState(false);
+  const fmt = product.formats[fmtIdx];
+  const price = formatPrice(product, fmt);
+  const out = product.stock === "out";
+
+  const add = () => {
+    onAdd(product, fmtIdx, qty);
+    setAdded(true);
+    setQty(1);
+    setTimeout(() => setAdded(false), 1400);
+  };
+
+  return (
+    <div className="product-card" style={{ flexDirection: "column", alignItems: "stretch", gap: 10 }}>
+      <button onClick={() => onOpen(product)} style={{ display: "flex", gap: 12, alignItems: "center", background: "transparent", border: 0, padding: 0, textAlign: "left", color: "inherit", width: "100%" }}>
+        <div className="thumb"><ProductThumb product={product} size={43} /></div>
+        <div style={{ flex: 1 }}>
+          <div className="pname">{product.name}</div>
+          <div className="pdesc">{product.desc}</div>
+          <div className="stock" style={{ color: STOCK_MAP[product.stock].c }}>
+            <span className="stock-dot" style={{ background: STOCK_MAP[product.stock].c }} />{STOCK_MAP[product.stock].t}
+          </div>
+        </div>
+        <ChevronRight size={16} color="var(--gold2)" />
+      </button>
+
+      {product.formats.length > 1 && (
+        <div className="chips" style={{ margin: 0 }}>
+          {product.formats.map((f, i) => (
+            <button key={f} className={i === fmtIdx ? "chip active" : "chip"} onClick={() => setFmtIdx(i)}>{fmtDisplay(f)}</button>
+          ))}
+        </div>
+      )}
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        <div className="price">
+          {peso(price)}{isBox(fmt) && <span style={{ color: "var(--muted)", fontSize: 11, fontWeight: 600 }}> · {BOX_UNITS} pcs</span>}
+        </div>
+        <div className="stepper">
+          <button onClick={() => setQty((q) => Math.max(1, q - 1))}><Minus size={14} /></button>
+          <span>{qty}</span>
+          <button onClick={() => setQty((q) => q + 1)}><Plus size={14} /></button>
+        </div>
+      </div>
+
+      <button className="btn primary" disabled={out} style={{ padding: 11 }} onClick={add}>
+        {out ? "Out of stock" : added ? "Added ✓" : "Add to order"}
+      </button>
+    </div>
+  );
+}
+
 export default function App() {
   const [view, setView] = useState("home");
   const [products, setProducts] = useState(PRODUCTS); // PRODUCTS = built-in fallback
@@ -350,16 +411,18 @@ export default function App() {
   const go = (v) => setView(v);
   const openProduct = (p) => { setActive(p); setFmtIdx(0); setQty(1); go("detail"); };
 
-  const addToOrder = () => {
-    const fmt = active.formats[fmtIdx];
-    const key = active.id + "::" + fmtIdx;
+  const addItem = (product, fIdx, q) => {
+    const fmt = product.formats[fIdx];
+    const key = product.id + "::" + fIdx;
+    const price = formatPrice(product, fmt);
     setSel((cur) => {
       const existing = cur.find((i) => i.key === key);
-      if (existing) return cur.map((i) => i.key === key ? { ...i, qty: i.qty + qty } : i);
-      return [...cur, { key, id: active.id, name: active.name, labelName: active.labelName, dose: active.dose, format: fmt, qty, price: active.price }];
+      if (existing) return cur.map((i) => i.key === key ? { ...i, qty: i.qty + q } : i);
+      return [...cur, { key, id: product.id, name: product.name, labelName: product.labelName, dose: product.dose, format: fmt, qty: q, price }];
     });
-    go("order");
   };
+
+  const addToOrder = () => { addItem(active, fmtIdx, qty); go("order"); };
 
   const bump = (key, d) => {
     setSel((cur) => cur.map((i) => i.key === key ? { ...i, qty: i.qty + d } : i).filter((i) => i.qty > 0));
@@ -1482,21 +1545,7 @@ export default function App() {
               <div className="notice">All products are for research use only. Pricing, stock, and delivery details are confirmed before payment.</div>
 
               {products.map((p) => (
-                <button className="product-card" key={p.id} onClick={() => openProduct(p)}>
-                  <div className="thumb"><ProductThumb product={p} size={43}/></div>
-                  <div style={{flex:1}}>
-                    <div className="pname">{p.name}</div>
-                    <div className="pdesc">{p.desc}</div>
-                    <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginTop:6}}>
-                      <div className="stock" style={{color:STOCK_MAP[p.stock].c,marginTop:0}}>
-                        <span className="stock-dot" style={{background:STOCK_MAP[p.stock].c}} />{STOCK_MAP[p.stock].t}
-                      </div>
-                      <span className="focus-pill">{p.focus}</span>
-                    </div>
-                  </div>
-                  <div className="price">{peso(p.price)}</div>
-                  <ChevronRight size={16} color="var(--gold2)"/>
-                </button>
+                <ShopCard key={p.id} product={p} onAdd={addItem} onOpen={openProduct} />
               ))}
 
               <a className="btn ghost" style={{marginTop:14}} href={wa("Hi Dong Prime, could you send me the full catalog?")} target="_blank" rel="noreferrer">
@@ -1514,15 +1563,20 @@ export default function App() {
               <p className="subtitle" style={{marginTop:6}}>{active.desc}</p>
 
               <div className="price-row">
-                <div className="big-price">{peso(active.price)}</div>
+                <div className="big-price">{peso(formatPrice(active, active.formats[fmtIdx]))}</div>
                 <div className="stock" style={{color:STOCK_MAP[active.stock].c}}>
                   <span className="stock-dot" style={{background:STOCK_MAP[active.stock].c}} />{STOCK_MAP[active.stock].t}
                 </div>
               </div>
+              {isBox(active.formats[fmtIdx]) && (
+                <div className="footer-note" style={{textAlign:"left",marginTop:-8,marginBottom:6}}>
+                  Box of {BOX_UNITS} vials — {peso(active.price)} each
+                </div>
+              )}
 
               <p className="subtitle" style={{marginTop:0}}>{active.detail}</p>
 
-              <div className="info-row"><FlaskConical size={16} color="var(--gold2)"/>Format <b>{active.formats[fmtIdx]}</b></div>
+              <div className="info-row"><FlaskConical size={16} color="var(--gold2)"/>Format <b>{fmtDisplay(active.formats[fmtIdx])}</b></div>
               <div className="info-row"><Box size={16} color="var(--gold2)"/>Research Focus <b>{active.category}</b></div>
               <div className="info-row"><Shield size={16} color="var(--gold2)"/>Use <b>Research use only</b></div>
 
@@ -1531,7 +1585,7 @@ export default function App() {
                   <div className="section-label">Format</div>
                   <div className="chips">
                     {active.formats.map((f, i) => (
-                      <button key={f} className={i === fmtIdx ? "chip active" : "chip"} onClick={() => setFmtIdx(i)}>{f}</button>
+                      <button key={f} className={i === fmtIdx ? "chip active" : "chip"} onClick={() => setFmtIdx(i)}>{fmtDisplay(f)}</button>
                     ))}
                   </div>
                 </>
@@ -1662,7 +1716,7 @@ export default function App() {
                     <div className="thumb"><ProductThumb product={itemProduct(i)} size={39}/></div>
                     <div style={{flex:1}}>
                       <div className="pname">{i.name}</div>
-                      <div className="pdesc">{i.format} · {peso(i.price)}</div>
+                      <div className="pdesc">{fmtDisplay(i.format)} · {peso(i.price)}</div>
                     </div>
                     <div className="stepper">
                       <button onClick={() => bump(i.key, -1)}><Minus size={13}/></button>
@@ -1749,7 +1803,7 @@ export default function App() {
               {sel.map((i) => (
                 <div className="review-item" key={i.key}>
                   <div className="thumb"><ProductThumb product={itemProduct(i)} size={36}/></div>
-                  <div style={{flex:1}}><div className="pname">{i.name}</div><div className="pdesc">{i.format} × {i.qty}</div></div>
+                  <div style={{flex:1}}><div className="pname">{i.name}</div><div className="pdesc">{fmtDisplay(i.format)} × {i.qty}</div></div>
                   <div className="price">{peso(i.price * i.qty)}</div>
                 </div>
               ))}
