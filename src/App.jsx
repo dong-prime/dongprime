@@ -14,7 +14,7 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const WHATSAPP = "821099182479";
-const wa = (text) => `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(text)}`;
+const wa = (text) => `https://api.whatsapp.com/send?phone=${WHATSAPP}&text=${encodeURIComponent(text)}`;
 const SHIPPING = 0;
 
 const PRODUCTS = [
