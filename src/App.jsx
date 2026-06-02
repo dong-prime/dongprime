@@ -6,7 +6,10 @@ import {
   ShieldCheck, Truck, FlaskConical, Search, Clock, Users, Upload,
   Box, Award, WalletCards, CreditCard, Handshake, Headphones
 } from "lucide-react";
-import { fetchProducts } from "./lib/supabase";
+import {
+  supabase, fetchProducts,
+  signUpUser, signInUser, signOutUser, getProfile, toAppUser,
+} from "./lib/supabase";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Dong Prime Peptides demo app
@@ -300,6 +303,8 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [authTab, setAuthTab] = useState("login");
   const [afterAuth, setAfterAuth] = useState("account");
+  const [authMsg, setAuthMsg] = useState(null);   // { type: "error" | "info", text }
+  const [authBusy, setAuthBusy] = useState(false);
   const [af, setAf] = useState({ name: "", phone: "", email: "", password: "" });
   const [signupAddr, setSignupAddr] = useState(blankAddr);
   const [cust, setCust] = useState({ name: "", phone: "", email: "" });
@@ -342,33 +347,101 @@ export default function App() {
     setSel((cur) => cur.map((i) => i.key === key ? { ...i, qty: i.qty + d } : i).filter((i) => i.qty > 0));
   };
 
-  const applyUser = (u) => {
+  // Set user + autofill order details. No navigation (used on session restore).
+  const hydrateUser = (u) => {
     setUser(u);
-    setCust({ name: u.name, phone: u.phone, email: u.email || "" });
+    setCust({ name: u.name || "", phone: u.phone || "", email: u.email || "" });
     if (u.savedAddress) {
       setAddr(u.savedAddress);
       setUseSaved(true);
     }
+  };
+
+  // After an explicit login/signup: hydrate, clear the form, and navigate.
+  const applyUser = (u) => {
+    hydrateUser(u);
     setAf({ name: "", phone: "", email: "", password: "" });
     setSignupAddr(blankAddr);
+    setAuthMsg(null);
     go(afterAuth);
   };
 
-  const doLogin = () => applyUser({
-    name: af.name || "Kyle",
-    phone: af.phone || "+63 917 555 0101",
-    email: af.email || "kyle@email.com",
-    savedAddress: { region: "Metro Manila (NCR)", city: "Quezon City", barangay: "Loyola Heights", street: "12 Esteban Abada St.", zip: "1108" },
-  });
+  // Restore an existing session on load and keep it in sync.
+  useEffect(() => {
+    if (!supabase) return;
+    let active = true;
+    const hydrateFromSession = async (session) => {
+      if (!session?.user || !active) return;
+      const profile = await getProfile(session.user.id);
+      if (active) hydrateUser(toAppUser(session.user, profile));
+    };
+    supabase.auth.getSession().then(({ data }) => hydrateFromSession(data.session));
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) setTimeout(() => hydrateFromSession(session), 0); // avoid deadlock
+      else if (active) setUser(null);
+    });
+    return () => { active = false; sub.subscription.unsubscribe(); };
+  }, []);
 
-  const doSignup = () => applyUser({
-    name: af.name || "Kyle",
-    phone: af.phone || "+63 917 000 0000",
-    email: af.email || "kyle@email.com",
-    savedAddress: signupAddr.region ? signupAddr : null,
-  });
+  const doLogin = async () => {
+    setAuthMsg(null);
+    if (!af.email || !af.password) {
+      setAuthMsg({ type: "error", text: "Enter your email and password." });
+      return;
+    }
+    setAuthBusy(true);
+    const { data, error } = await signInUser({ email: af.email.trim(), password: af.password });
+    setAuthBusy(false);
+    if (error) {
+      const text = /confirm|not confirmed/i.test(error.message)
+        ? "Please confirm your email first — check your inbox for the link."
+        : "Wrong email or password.";
+      setAuthMsg({ type: "error", text });
+      return;
+    }
+    const profile = await getProfile(data.user.id);
+    applyUser(toAppUser(data.user, profile));
+  };
 
-  const logout = () => {
+  const doSignup = async () => {
+    setAuthMsg(null);
+    if (!af.email || !af.password) {
+      setAuthMsg({ type: "error", text: "Enter your email and password." });
+      return;
+    }
+    if (af.password.length < 6) {
+      setAuthMsg({ type: "error", text: "Password must be at least 6 characters." });
+      return;
+    }
+    setAuthBusy(true);
+    const { data, error } = await signUpUser({
+      email: af.email.trim(),
+      password: af.password,
+      name: af.name,
+      phone: af.phone,
+      savedAddress: signupAddr.region ? signupAddr : null,
+    });
+    setAuthBusy(false);
+    if (error) {
+      setAuthMsg({ type: "error", text: error.message });
+      return;
+    }
+    // Email confirmation ON → no session yet; user must click the email link.
+    if (!data.session) {
+      setAuthTab("login");
+      setAf({ ...af, password: "" });
+      setAuthMsg({
+        type: "info",
+        text: `We sent a confirmation link to ${af.email.trim()}. Click it to verify — you'll be logged in automatically.`,
+      });
+      return;
+    }
+    // Email confirmation OFF → already logged in.
+    applyUser(toAppUser(data.user, null));
+  };
+
+  const logout = async () => {
+    await signOutUser();
     setUser(null);
     setCust({ name: "", phone: "", email: "" });
     setAddr(blankAddr);
@@ -1383,8 +1456,8 @@ export default function App() {
               {authTab === "login" && <div className="detail-art" style={{minHeight:170,marginTop:16}}><ProductVial product={PRODUCTS[1]} size={88} hero /></div>}
 
               <div className="tabs">
-                <button className={authTab === "login" ? "tab active" : "tab"} onClick={() => setAuthTab("login")}>Log in</button>
-                <button className={authTab === "signup" ? "tab active" : "tab"} onClick={() => setAuthTab("signup")}>Sign up</button>
+                <button className={authTab === "login" ? "tab active" : "tab"} onClick={() => { setAuthTab("login"); setAuthMsg(null); }}>Log in</button>
+                <button className={authTab === "signup" ? "tab active" : "tab"} onClick={() => { setAuthTab("signup"); setAuthMsg(null); }}>Sign up</button>
               </div>
 
               {authTab === "signup" && (
@@ -1403,11 +1476,24 @@ export default function App() {
                 </>
               )}
 
-              <button className="btn primary" onClick={authTab === "login" ? doLogin : doSignup}>
-                {authTab === "login" ? "Log in" : "Create account"}
+              {authMsg && (
+                <div className="notice" style={{
+                  marginTop:14, marginBottom:0,
+                  borderColor: authMsg.type === "error" ? "rgba(195,86,86,.5)" : "var(--line)",
+                  color: authMsg.type === "error" ? "#E79A9A" : "var(--gold2)",
+                  background: authMsg.type === "error" ? "rgba(195,86,86,.08)" : "rgba(200,146,42,.06)",
+                }}>
+                  {authMsg.text}
+                </div>
+              )}
+
+              <button className="btn primary" style={{marginTop:14}} disabled={authBusy} onClick={authTab === "login" ? doLogin : doSignup}>
+                {authBusy
+                  ? (authTab === "login" ? "Logging in…" : "Creating account…")
+                  : (authTab === "login" ? "Log in" : "Create account")}
               </button>
               <button className="link" style={{display:"block",margin:"16px auto 0"}} onClick={() => go("home")}>Continue as guest</button>
-              <div className="footer-note">Prototype — credentials are not stored anywhere.</div>
+              <div className="footer-note">Your password is securely stored by Supabase Auth. We never see it.</div>
             </section>
           )}
 

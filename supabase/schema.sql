@@ -129,8 +129,14 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into public.profiles (id, email)
-  values (new.id, new.email)
+  insert into public.profiles (id, email, name, phone, saved_address)
+  values (
+    new.id,
+    new.email,
+    new.raw_user_meta_data->>'name',
+    new.raw_user_meta_data->>'phone',
+    new.raw_user_meta_data->'saved_address'   -- jsonb, NULL if not provided
+  )
   on conflict (id) do nothing;
   return new;
 end;

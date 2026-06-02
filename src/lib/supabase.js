@@ -49,3 +49,48 @@ export async function fetchProducts() {
   }
   return (data || []).map(rowToProduct);
 }
+
+// ─── Auth ───────────────────────────────────────────────────────────────────
+
+// Sign up. With "Confirm email" ON, the returned session is null until the user
+// clicks the link in their email. Name/phone/address are saved into the auth
+// user metadata, which the handle_new_user DB trigger copies into profiles.
+export async function signUpUser({ email, password, name, phone, savedAddress }) {
+  if (!supabase) return { error: { message: "Supabase not configured" } };
+  const data = { name: name || "", phone: phone || "" };
+  if (savedAddress) data.saved_address = savedAddress;
+  return supabase.auth.signUp({ email, password, options: { data } });
+}
+
+export async function signInUser({ email, password }) {
+  if (!supabase) return { error: { message: "Supabase not configured" } };
+  return supabase.auth.signInWithPassword({ email, password });
+}
+
+export async function signOutUser() {
+  if (supabase) await supabase.auth.signOut();
+}
+
+// Read a user's profile row. Returns null if missing / not configured.
+export async function getProfile(userId) {
+  if (!supabase) return null;
+  const { data } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("id", userId)
+    .maybeSingle();
+  return data;
+}
+
+// Build the app's `user` shape from an auth user + (optional) profile row.
+export function toAppUser(authUser, profile) {
+  const meta = authUser.user_metadata || {};
+  const emailPrefix = (authUser.email || "").split("@")[0];
+  return {
+    id: authUser.id,
+    name: profile?.name || meta.name || emailPrefix,
+    phone: profile?.phone || meta.phone || "",
+    email: authUser.email || "",
+    savedAddress: profile?.saved_address || meta.saved_address || null,
+  };
+}
