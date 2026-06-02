@@ -35,11 +35,51 @@ function setup() {
   SpreadsheetApp.getActive().toast('Setup done: Orders + Movements auto-refresh every 5 min; Products/Orders edits push to the site.');
 }
 
-/** Refresh all read-only views (called by the 5-min trigger). */
+var SITE_URL = 'https://dongprime.vercel.app';
+
+/** Refresh all read-only views + send pending emails (5-min trigger). */
 function refreshAll() {
   pullOrders();
   pullMovements();
   refreshStock();
+  sendOrderEmails();
+}
+
+/**
+ * Email an order confirmation + tracking link to any order not yet notified.
+ * Sends from the owner's Gmail (GmailApp). Marks notified=true after trying,
+ * so a bad address isn't retried forever.
+ */
+function sendOrderEmails() {
+  var c = cfg_();
+  var res = UrlFetchApp.fetch(c.url + '/rest/v1/orders?select=*&notified=eq.false&order=created_at.asc&limit=50', {
+    headers: headers_(), muteHttpExceptions: true,
+  });
+  var rows = JSON.parse(res.getContentText());
+  if (!rows.length) return;
+  rows.forEach(function (o) {
+    var cu = o.customer || {};
+    if (cu.email) {
+      try {
+        var items = (o.items || []).map(function (i) { return '• ' + i.qty + 'x ' + i.name + (i.format ? ' (' + i.format + ')' : ''); }).join('\n');
+        var link = SITE_URL + '/?track=' + encodeURIComponent(o.order_code);
+        var body = 'Hi ' + (cu.name || 'there') + ',\n\n'
+          + 'Thanks for your order request with Dong Prime Peptides.\n\n'
+          + 'Order number: ' + o.order_code + '\n'
+          + 'Items:\n' + items + '\n'
+          + 'Total shown: PHP ' + (o.total || 0) + '\n\n'
+          + 'Track your order anytime:\n' + link + '\n\n'
+          + 'We will confirm price, stock, and total with you before any payment. '
+          + 'Questions? Just reply to this email or message us on WhatsApp.\n\n'
+          + '— Dong Prime Peptides';
+        GmailApp.sendEmail(cu.email, 'Dong Prime Peptides — Order ' + o.order_code + ' received', body);
+      } catch (err) {}
+    }
+    UrlFetchApp.fetch(c.url + '/rest/v1/orders?order_code=eq.' + encodeURIComponent(o.order_code), {
+      method: 'patch', headers: headers_(), muteHttpExceptions: true,
+      payload: JSON.stringify({ notified: true }),
+    });
+  });
 }
 
 /**

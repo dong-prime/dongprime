@@ -57,6 +57,7 @@ create table if not exists public.orders (
   delivery    text,                                -- 'courier' | 'cod' | 'meetup'
   status      text not null default 'received',    -- received|confirmed|preparing|shipped|delivered|cancelled
   notes       text,                                -- customer's special requests
+  notified    boolean not null default false,      -- order-confirmation email sent (by Apps Script)
   step        integer not null default 0,          -- legacy; step is now derived from status
   courier     text,
   tracking_no text,
