@@ -301,6 +301,7 @@ create policy "payment proof upload"
 
 -- Customer-initiated cancellation request (only before shipping). Sets a flag;
 -- the owner reviews it and sets status to 'cancelled' or 'refunded'.
+-- Customer request to cancel (pre-shipping) or refund (after delivery).
 create or replace function public.request_cancellation(p_code text)
 returns void
 language sql
@@ -310,7 +311,7 @@ as $$
   update public.orders
   set cancel_requested = true
   where order_code = upper(trim(p_code))
-    and status in ('received', 'awaiting_payment', 'confirmed', 'preparing');
+    and status in ('received', 'awaiting_payment', 'confirmed', 'preparing', 'delivered');
 $$;
 
 grant execute on function public.request_cancellation(text) to anon, authenticated;
@@ -325,7 +326,10 @@ set search_path = public
 as $$
 declare v_item jsonb;
 begin
-  if new.status in ('cancelled', 'refunded') and old.status not in ('cancelled', 'refunded') then
+  -- Only auto-restock when goods never shipped. A delivered order that gets
+  -- refunded does NOT auto-restock (handle any physical return manually).
+  if new.status in ('cancelled', 'refunded')
+     and old.status not in ('cancelled', 'refunded', 'shipped', 'delivered') then
     for v_item in select * from jsonb_array_elements(new.items)
     loop
       update public.inventory

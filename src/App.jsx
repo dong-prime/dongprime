@@ -482,6 +482,7 @@ export default function App() {
     refunded: r.status === "refunded",
     cancelRequested: !!r.cancel_requested,
     cancellable: ["received", "awaiting_payment", "confirmed", "preparing"].includes(r.status || "received"),
+    refundable: (r.status || "received") === "delivered",
     notes: r.notes || "",
     steps: trackStepsFor(r.delivery, r.pay_pref),
     step: statusToStep(r.status || "received", r.delivery),
@@ -1885,7 +1886,9 @@ export default function App() {
                   <>
                   {activeOrder.cancelRequested && (
                     <div className="notice" style={{marginTop:18,borderColor:"var(--line)",color:"var(--gold2)",background:"rgba(200,146,42,.06)"}}>
-                      Cancellation requested — we'll confirm and process any refund shortly.
+                      {activeOrder.refundable
+                        ? "Refund requested — we'll review and follow up shortly."
+                        : "Cancellation requested — we'll confirm and process any refund shortly."}
                     </div>
                   )}
                   <div style={{marginTop:20}}>
@@ -1937,8 +1940,10 @@ export default function App() {
                       );
                     })}
                   </div>
-                  {activeOrder.cancellable && !activeOrder.cancelRequested && (
-                    <button className="btn ghost" style={{marginTop:6}} onClick={handleCancelRequest}>Request cancellation</button>
+                  {!activeOrder.cancelRequested && (activeOrder.cancellable || activeOrder.refundable) && (
+                    <button className="btn ghost" style={{marginTop:6}} onClick={handleCancelRequest}>
+                      {activeOrder.refundable ? "Request refund" : "Request cancellation"}
+                    </button>
                   )}
                   </>
                   )}
