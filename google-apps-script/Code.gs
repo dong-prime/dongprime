@@ -39,6 +39,33 @@ function setup() {
 function refreshAll() {
   pullOrders();
   pullMovements();
+  refreshStock();
+}
+
+/**
+ * Update ONLY the stock_qty column (D) of the Products tab from the live
+ * inventory, matched by id (column A). This keeps stock in sync after sales
+ * without overwriting the name/price/active cells you edit. Script writes do
+ * not fire onEditProducts, so there's no sync loop.
+ */
+function refreshStock() {
+  var c = cfg_();
+  var sh = SpreadsheetApp.getActive().getSheetByName('Products');
+  if (!sh) return;
+  var lastRow = sh.getLastRow();
+  if (lastRow < 2) return;
+  var res = UrlFetchApp.fetch(c.url + '/rest/v1/inventory?select=product_id,qty', {
+    headers: headers_(), muteHttpExceptions: true,
+  });
+  var inv = JSON.parse(res.getContentText());
+  var map = {};
+  inv.forEach(function (r) { map[r.product_id] = r.qty; });
+  var ids = sh.getRange(2, 1, lastRow - 1, 1).getValues();
+  var out = ids.map(function (r) {
+    var id = r[0];
+    return [(id !== '' && map[id] != null) ? map[id] : ''];
+  });
+  sh.getRange(2, 4, out.length, 1).setValues(out); // column D = stock_qty
 }
 
 /** Orders: Supabase → "Orders" sheet (read-only view, rewritten each run). */
