@@ -276,12 +276,13 @@ function trackStepsFor(delivery, payPref) {
 }
 
 // Named order status (owner-editable) → current step index, per delivery type.
+// 'awaiting_payment' lands on the step that shows the GCash receipt upload.
 const STEP_MAP = {
-  cod:     { received: 0, confirmed: 1, preparing: 2, shipped: 3, delivered: 4 },
-  meetup:  { received: 0, confirmed: 2, preparing: 3, shipped: 4, delivered: 5 },
-  courier: { received: 0, confirmed: 2, preparing: 3, shipped: 4, delivered: 5 },
+  cod:     { received: 0, awaiting_payment: 1, confirmed: 1, preparing: 2, shipped: 3, delivered: 4 },
+  meetup:  { received: 0, awaiting_payment: 1, confirmed: 2, preparing: 3, shipped: 4, delivered: 5 },
+  courier: { received: 0, awaiting_payment: 1, confirmed: 2, preparing: 3, shipped: 4, delivered: 5 },
 };
-const ORDER_STATUSES = ["received", "confirmed", "preparing", "shipped", "delivered", "cancelled"];
+const ORDER_STATUSES = ["received", "awaiting_payment", "confirmed", "preparing", "shipped", "delivered", "cancelled"];
 
 function statusToStep(status, delivery) {
   const map = STEP_MAP[delivery] || STEP_MAP.courier;

@@ -68,7 +68,22 @@ function refreshStock() {
   sh.getRange(2, 4, out.length, 1).setValues(out); // column D = stock_qty
 }
 
-var ORDER_STATUSES = ['received', 'confirmed', 'preparing', 'shipped', 'delivered', 'cancelled'];
+var ORDER_STATUSES = ['received', 'awaiting_payment', 'confirmed', 'preparing', 'shipped', 'delivered', 'cancelled'];
+
+/** Build a temporary (7-day) signed URL so the owner can click to view a receipt. */
+function signedProofUrl_(c, path) {
+  if (!path) return '';
+  var enc = path.split('/').map(encodeURIComponent).join('/');
+  var res = UrlFetchApp.fetch(c.url + '/storage/v1/object/sign/payment-proofs/' + enc, {
+    method: 'post', headers: headers_(), muteHttpExceptions: true,
+    payload: JSON.stringify({ expiresIn: 604800 }),
+  });
+  try {
+    var j = JSON.parse(res.getContentText());
+    if (j && j.signedURL) return c.url + '/storage/v1' + j.signedURL;
+  } catch (err) {}
+  return path;
+}
 
 /**
  * Orders: Supabase → "Orders" sheet. Rewritten each run.
@@ -92,8 +107,9 @@ function pullOrders() {
       ? [o.address.street, o.address.barangay, o.address.city, o.address.region].filter(Boolean).join(', ')
       : (o.meet ? ('Meetup: ' + (o.meet.place || '') + ' ' + (o.meet.when || '')) : '');
     var cu = o.customer || {};
+    var proof = o.proof_url ? signedProofUrl_(c, o.proof_url) : '';
     return [o.order_code, o.created_at, o.status || 'received', o.tracking_no || '', cu.name || '', cu.phone || '',
-            cu.email || '', items, o.delivery || '', o.pay_pref || '', addr, o.total || 0, o.notes || '', o.proof_url || ''];
+            cu.email || '', items, o.delivery || '', o.pay_pref || '', addr, o.total || 0, o.notes || '', proof];
   });
   sh.getRange(2, 1, data.length, header.length).setValues(data);
   // status dropdown on column C
