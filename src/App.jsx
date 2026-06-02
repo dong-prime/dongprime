@@ -1858,10 +1858,28 @@ export default function App() {
                   <p className="subtitle">Order {activeOrder.id}</p>
 
                   {activeOrder.cancelled ? (
-                    <div className="notice" style={{marginTop:18,borderColor:"rgba(195,86,86,.5)",color:"#E79A9A",background:"rgba(195,86,86,.08)"}}>
-                      {activeOrder.refunded
-                        ? "This order was cancelled and your payment has been refunded. Allow a little time for it to reflect."
-                        : "This order was cancelled. If this is unexpected, please message us on WhatsApp."}
+                    <div style={{marginTop:20}}>
+                      <div className="track-step">
+                        <div className="track-left">
+                          <div className="track-dot" style={{background:"#C35656",borderColor:"#C35656",color:"#fff"}}>✕</div>
+                          {activeOrder.refunded && <div className="track-bar done" style={{background:"#C35656"}} />}
+                        </div>
+                        <div className="track-body current">
+                          <h4 style={{color:"#E79A9A"}}>Cancelled</h4>
+                          <p>This order was cancelled.{!activeOrder.refunded && " If this is unexpected, please message us on WhatsApp."}</p>
+                        </div>
+                      </div>
+                      {activeOrder.refunded && (
+                        <div className="track-step">
+                          <div className="track-left">
+                            <div className="track-dot done" style={{background:"#C35656",borderColor:"#C35656",color:"#fff"}}><Check size={13}/></div>
+                          </div>
+                          <div className="track-body current">
+                            <h4 style={{color:"#E79A9A"}}>Refunded</h4>
+                            <p>Your payment has been returned. Please allow a little time for it to reflect.</p>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ) : (
                   <>
