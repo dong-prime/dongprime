@@ -13,7 +13,7 @@ import {
 // Replace WHATSAPP with the real WhatsApp Business number.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const WHATSAPP = "639170000000";
+const WHATSAPP = "821099182479";
 const wa = (text) => `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(text)}`;
 const SHIPPING = 0;
 
