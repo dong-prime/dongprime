@@ -605,6 +605,14 @@ export default function App() {
     setActiveOrder({ ...activeOrder, cancelRequested: true });
   };
 
+  // Refund requests are handled manually over WhatsApp. We also flag the order
+  // (fire-and-forget) so it shows up for the owner in the sheet.
+  const handleRefundRequest = () => {
+    if (!activeOrder) return;
+    requestCancellation(activeOrder.id);
+    setActiveOrder({ ...activeOrder, cancelRequested: true });
+  };
+
   const itemProduct = (item) => products.find((p) => p.id === item.id) || products.find((p) => p.name === item.name) || products[0] || PRODUCTS[1];
 
   const NavItem = ({ id, label, Icon, href }) => {
@@ -1425,7 +1433,7 @@ export default function App() {
               <p className="subtitle">Curated research compounds, sealed presentation, and discreet support via WhatsApp.</p>
 
               <div style={{display:"grid",gap:10,marginTop:18}}>
-                <button className="btn primary" onClick={() => go("shop")}>Browse catalog <ChevronRight size={16}/></button>
+                <button className="btn primary" onClick={() => go("shop")}>Shop now <ChevronRight size={16}/></button>
                 <a className="btn ghost" href={wa("Hi Dong Prime, could you send me the catalog?")} target="_blank" rel="noreferrer">
                   <MessageCircle size={16}/>Request catalog on WhatsApp
                 </a>
@@ -1940,10 +1948,15 @@ export default function App() {
                       );
                     })}
                   </div>
-                  {!activeOrder.cancelRequested && (activeOrder.cancellable || activeOrder.refundable) && (
-                    <button className="btn ghost" style={{marginTop:6}} onClick={handleCancelRequest}>
-                      {activeOrder.refundable ? "Request refund" : "Request cancellation"}
-                    </button>
+                  {!activeOrder.cancelRequested && activeOrder.refundable && (
+                    <a className="btn ghost" style={{marginTop:6}}
+                       href={wa(`Hi Dong Prime, I want to request a refund for order ${activeOrder.id}.`)}
+                       target="_blank" rel="noreferrer" onClick={handleRefundRequest}>
+                      <MessageCircle size={16}/>Request refund
+                    </a>
+                  )}
+                  {!activeOrder.cancelRequested && activeOrder.cancellable && (
+                    <button className="btn ghost" style={{marginTop:6}} onClick={handleCancelRequest}>Request cancellation</button>
                   )}
                   </>
                   )}
@@ -1980,7 +1993,7 @@ export default function App() {
 
         <nav className="nav">
           <NavItem id="home" label="Home" Icon={Home}/>
-          <NavItem id="shop" label="Catalog" Icon={LayoutGrid}/>
+          <NavItem id="shop" label="Shop" Icon={LayoutGrid}/>
           <NavItem id="orders" label="Orders" Icon={ClipboardList}/>
           <NavItem id="whatsapp" label="WhatsApp" Icon={MessageCircle} href={wa("Hi Dong Prime, I have a question.")}/>
           <NavItem id="account" label="Account" Icon={User}/>
