@@ -11,6 +11,7 @@ import {
   signUpUser, signInUser, signOutUser, getProfile, toAppUser,
   placeOrder, lookupOrder, fetchMyOrders, uploadPaymentProof, requestCancellation,
 } from "./lib/supabase";
+import { fetchRegions, fetchCities, fetchBarangays } from "./lib/psgc";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Dong Prime Peptides demo app
@@ -127,25 +128,7 @@ const STOCK_MAP = {
   out: { t: "Out of stock", c: "#C35656" },
 };
 
-const PH_ADDR = {
-  "Metro Manila (NCR)": {
-    "Quezon City": ["Diliman", "Loyola Heights", "Commonwealth", "Holy Spirit", "Batasan Hills", "Bagong Pag-asa"],
-    Makati: ["Poblacion", "Bel-Air", "San Lorenzo", "Bangkal", "Guadalupe Nuevo", "Forbes Park"],
-    Manila: ["Malate", "Ermita", "Tondo", "Sampaloc", "Binondo", "Sta. Cruz"],
-    Pasig: ["Kapitolyo", "San Antonio", "Ugong", "Ortigas Center"],
-    Taguig: ["Fort Bonifacio", "Western Bicutan", "Ususan", "Bagumbayan"],
-  },
-  "Central Visayas (Region VII)": {
-    "Cebu City": ["Lahug", "Mabolo", "Guadalupe", "Banilad", "Capitol Site"],
-    "Mandaue City": ["Centro", "Tipolo", "Subangdaku", "Banilad"],
-  },
-  "Calabarzon (Region IV-A)": {
-    Antipolo: ["San Roque", "Dela Paz", "Mayamot", "Cupang"],
-    Bacoor: ["Molino", "Talaba", "Zapote", "Mambog"],
-  },
-};
-
-const blankAddr = { region: "", city: "", barangay: "", street: "", zip: "" };
+const blankAddr = { region: "", regionCode: "", city: "", cityCode: "", barangay: "", street: "", zip: "" };
 const peso = (n) => "₱" + Number(n || 0).toLocaleString("en-PH");
 const fmtAddr = (a) => [a.street, a.barangay && "Brgy. " + a.barangay, a.city, a.region].filter(Boolean).join(", ");
 
@@ -232,41 +215,68 @@ function HeroLineup() {
 }
 
 function AddressFields({ addr, setAddr }) {
-  const regions = Object.keys(PH_ADDR);
-  const cities = addr.region ? Object.keys(PH_ADDR[addr.region]) : [];
-  const brgys = addr.region && addr.city ? PH_ADDR[addr.region][addr.city] : [];
+  const [regions, setRegions] = useState([]);
+  const [cities, setCities] = useState([]);
+  const [brgys, setBrgys] = useState([]);
 
-  const set = (k, v) => {
-    if (k === "region") setAddr({ ...addr, region: v, city: "", barangay: "" });
-    else if (k === "city") setAddr({ ...addr, city: v, barangay: "" });
-    else setAddr({ ...addr, [k]: v });
+  // Load full region list once. If a region name is already set (e.g. a saved
+  // address) but its code isn't, resolve the code so cities can load.
+  useEffect(() => {
+    fetchRegions().then((rs) => {
+      setRegions(rs);
+      if (addr.region && !addr.regionCode) {
+        const r = rs.find((x) => x.name === addr.region);
+        if (r) setAddr((a) => ({ ...a, regionCode: r.code }));
+      }
+    });
+  }, []);
+
+  useEffect(() => { fetchCities(addr.regionCode).then(setCities); }, [addr.regionCode]);
+  useEffect(() => { fetchBarangays(addr.cityCode).then(setBrgys); }, [addr.cityCode]);
+
+  const onRegion = (e) => {
+    const r = regions.find((x) => x.name === e.target.value);
+    setAddr({ ...addr, region: r?.name || "", regionCode: r?.code || "", city: "", cityCode: "", barangay: "" });
+  };
+  const onCity = (e) => {
+    const c = cities.find((x) => x.name === e.target.value);
+    setAddr({ ...addr, city: c?.name || "", cityCode: c?.code || "", barangay: "" });
   };
 
-  const SelectField = ({ label, k, value, options, disabled, placeholder }) => (
-    <div className="field">
-      <label><MapPin size={12}/>{label}</label>
-      <div className="select-wrap">
-        <select value={value} disabled={disabled} onChange={(e) => set(k, e.target.value)}>
-          <option value="">{placeholder}</option>
-          {options.map((o) => <option key={o} value={o}>{o}</option>)}
-        </select>
-        <ChevronDown size={15} className="select-icon" />
+  // A select that always shows the current value, even before its list loads.
+  const Select = ({ label, value, options, disabled, placeholder, onChange }) => {
+    const names = options.map((o) => o.name);
+    return (
+      <div className="field">
+        <label><MapPin size={12}/>{label}</label>
+        <div className="select-wrap">
+          <select value={value || ""} disabled={disabled} onChange={onChange}>
+            <option value="">{placeholder}</option>
+            {value && !names.includes(value) && <option value={value}>{value}</option>}
+            {options.map((o) => <option key={o.code} value={o.name}>{o.name}</option>)}
+          </select>
+          <ChevronDown size={15} className="select-icon" />
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <>
-      <SelectField label="Region" k="region" value={addr.region} options={regions} placeholder="Select region" />
-      <SelectField label="City / Municipality" k="city" value={addr.city} options={cities} disabled={!addr.region} placeholder={addr.region ? "Select city" : "Choose region first"} />
-      <SelectField label="Barangay" k="barangay" value={addr.barangay} options={brgys} disabled={!addr.city} placeholder={addr.city ? "Select barangay" : "Choose city first"} />
+      <Select label="Region" value={addr.region} options={regions} onChange={onRegion}
+        placeholder={regions.length ? "Select region" : "Loading regions…"} />
+      <Select label="City / Municipality" value={addr.city} options={cities} disabled={!addr.regionCode} onChange={onCity}
+        placeholder={!addr.regionCode ? "Choose region first" : cities.length ? "Select city" : "Loading…"} />
+      <Select label="Barangay" value={addr.barangay} options={brgys} disabled={!addr.cityCode}
+        onChange={(e) => setAddr({ ...addr, barangay: e.target.value })}
+        placeholder={!addr.cityCode ? "Choose city first" : brgys.length ? "Select barangay" : "Loading…"} />
       <div className="field">
         <label><MapPin size={12}/>Street / unit</label>
-        <input value={addr.street} placeholder="House no., street, building" onChange={(e) => set("street", e.target.value)} />
+        <input value={addr.street} placeholder="House no., street, building" onChange={(e) => setAddr({ ...addr, street: e.target.value })} />
       </div>
       <div className="field">
         <label>ZIP code <span>(optional)</span></label>
-        <input value={addr.zip} placeholder="1101" onChange={(e) => set("zip", e.target.value)} />
+        <input value={addr.zip} placeholder="1101" onChange={(e) => setAddr({ ...addr, zip: e.target.value })} />
       </div>
     </>
   );
