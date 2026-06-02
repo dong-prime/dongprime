@@ -57,3 +57,15 @@ on conflict (id) do update set
   price      = excluded.price,
   image_url  = excluded.image_url,
   sort_order = excluded.sort_order;
+
+-- Starting inventory quantities (the trigger will sync products.stock label).
+-- Re-running keeps existing qty (does nothing on conflict). Adjust later in the
+-- Supabase Table Editor → inventory.
+insert into public.inventory (product_id, qty, low_stock_threshold) values
+  ('tirzepatide-15mg', 20, 5),
+  ('retatrutide-20mg', 20, 5),
+  ('klow-80mg',        20, 5),
+  ('ghk-cu-50mg',      20, 5),
+  ('nad-glutathione',  20, 5),
+  ('cjc-ipa-5mg-5mg',  20, 5)
+on conflict (product_id) do nothing;

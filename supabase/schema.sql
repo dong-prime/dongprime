@@ -140,3 +140,60 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
+
+-- ============================================================================
+-- INVENTORY
+--   Real stock quantity per product. Managed by the owner (dashboard / admin).
+--   NOT publicly readable: the storefront only needs products.stock ('in'/
+--   'low'/'out'), which is kept in sync automatically by the trigger below.
+-- ============================================================================
+create table if not exists public.inventory (
+  product_id          text primary key references public.products(id) on delete cascade,
+  qty                 integer not null default 0,
+  low_stock_threshold integer not null default 5,
+  updated_at          timestamptz not null default now()
+);
+
+alter table public.inventory enable row level security;
+-- (no anon/authenticated policies on purpose — only service_role / dashboard
+--  may read or write inventory. Storefront reads the synced products.stock.)
+
+-- Keep products.stock label in sync with the real quantity.
+create or replace function public.sync_product_stock()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  new.updated_at := now();
+  update public.products p
+  set stock = case
+    when new.qty <= 0                        then 'out'
+    when new.qty <= new.low_stock_threshold  then 'low'
+    else                                          'in'
+  end
+  where p.id = new.product_id;
+  return new;
+end;
+$$;
+
+drop trigger if exists inventory_sync_stock on public.inventory;
+create trigger inventory_sync_stock
+  before insert or update of qty, low_stock_threshold on public.inventory
+  for each row execute function public.sync_product_stock();
+
+-- Optional audit ledger: every stock change (restock, sale, manual adjustment).
+-- Useful later for history; not required for the storefront to work.
+create table if not exists public.stock_movements (
+  id          bigint generated always as identity primary key,
+  product_id  text not null references public.products(id) on delete cascade,
+  delta       integer not null,          -- +N restock, -N sale
+  reason      text not null,             -- 'restock' | 'sale' | 'adjustment'
+  note        text,
+  order_code  text,
+  created_at  timestamptz not null default now()
+);
+
+alter table public.stock_movements enable row level security;
+-- (no public policies — owner/dashboard only, same as inventory)
