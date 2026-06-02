@@ -137,7 +137,7 @@ function pullOrders() {
   });
   var rows = JSON.parse(res.getContentText());
   var sh = SpreadsheetApp.getActive().getSheetByName('Orders');
-  var header = ['order_code', 'created_at', 'status', 'tracking_no', 'name', 'phone', 'email', 'items', 'delivery', 'payment', 'address', 'total', 'notes', 'proof', 'cancel_req'];
+  var header = ['order_code', 'created_at', 'status', 'tracking_no', 'name', 'phone', 'email', 'items', 'delivery', 'payment', 'address', 'total', 'notes', 'proof', 'request'];
   sh.clearContents();
   sh.getRange(1, 1, 1, header.length).setValues([header]);
   if (!rows.length) return;
@@ -148,9 +148,14 @@ function pullOrders() {
       : (o.meet ? ('Meetup: ' + (o.meet.place || '') + ' ' + (o.meet.when || '')) : '');
     var cu = o.customer || {};
     var proof = o.proof_url ? signedProofUrl_(c, o.proof_url) : '';
+    var reqType = '';
+    if (o.cancel_requested) {
+      if (o.status === 'delivered') reqType = 'REFUND';
+      else if (['received', 'awaiting_payment', 'confirmed', 'preparing'].indexOf(o.status) >= 0) reqType = 'CANCEL';
+    }
     return [o.order_code, o.created_at, o.status || 'received', o.tracking_no || '', cu.name || '', cu.phone || '',
             cu.email || '', items, o.delivery || '', o.pay_pref || '', addr, o.total || 0, o.notes || '', proof,
-            o.cancel_requested ? 'YES' : ''];
+            reqType];
   });
   sh.getRange(2, 1, data.length, header.length).setValues(data);
   // status dropdown on column C
