@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Home, LayoutGrid, ClipboardList, MessageCircle, User,
   ArrowLeft, Plus, Minus, Check, ChevronRight, ChevronDown,
@@ -6,6 +6,7 @@ import {
   ShieldCheck, Truck, FlaskConical, Search, Clock, Users, Upload,
   Box, Award, WalletCards, CreditCard, Handshake, Headphones
 } from "lucide-react";
+import { fetchProducts } from "./lib/supabase";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Dong Prime Peptides demo app
@@ -284,8 +285,16 @@ function ProductThumb({ product, size = 42 }) {
 
 export default function App() {
   const [view, setView] = useState("home");
+  const [products, setProducts] = useState(PRODUCTS); // PRODUCTS = built-in fallback
   const [sel, setSel] = useState([]);
   const [active, setActive] = useState(PRODUCTS[1]);
+
+  // Load the live catalog from Supabase; keep the built-in list if it fails.
+  useEffect(() => {
+    fetchProducts().then((rows) => {
+      if (rows.length) setProducts(rows);
+    });
+  }, []);
   const [fmtIdx, setFmtIdx] = useState(0);
   const [qty, setQty] = useState(1);
   const [user, setUser] = useState(null);
@@ -425,7 +434,7 @@ export default function App() {
     go("track");
   };
 
-  const itemProduct = (item) => PRODUCTS.find((p) => p.id === item.id) || PRODUCTS.find((p) => p.name === item.name) || PRODUCTS[1];
+  const itemProduct = (item) => products.find((p) => p.id === item.id) || products.find((p) => p.name === item.name) || products[0] || PRODUCTS[1];
 
   const NavItem = ({ id, label, Icon, href }) => {
     const active = navActive === id;
@@ -1265,7 +1274,7 @@ export default function App() {
                 <button className="link" onClick={() => go("shop")}>View all</button>
               </div>
 
-              {[PRODUCTS[1], PRODUCTS[0]].map((p) => (
+              {products.slice(0, 2).map((p) => (
                 <button className="product-card" key={p.id} onClick={() => openProduct(p)}>
                   <div className="thumb"><ProductThumb product={p} size={42}/></div>
                   <div style={{flex:1}}>
@@ -1293,7 +1302,7 @@ export default function App() {
               <p className="subtitle">Tap a product for details. Prices shown in PHP. Message us on WhatsApp anytime.</p>
               <div className="notice">All products are for research use only. Pricing, stock, and delivery details are confirmed before payment.</div>
 
-              {PRODUCTS.map((p) => (
+              {products.map((p) => (
                 <button className="product-card" key={p.id} onClick={() => openProduct(p)}>
                   <div className="thumb"><ProductThumb product={p} size={43}/></div>
                   <div style={{flex:1}}>
