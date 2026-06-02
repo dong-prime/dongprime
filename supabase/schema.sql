@@ -55,9 +55,10 @@ create table if not exists public.orders (
   meet        jsonb,                               -- null unless delivery = meetup
   pay_pref    text,                                -- 'gcash' | 'card'
   delivery    text,                                -- 'courier' | 'cod' | 'meetup'
-  status      text not null default 'received',    -- received|confirmed|preparing|shipped|delivered|cancelled
+  status      text not null default 'received',    -- received|awaiting_payment|confirmed|preparing|shipped|delivered|cancelled|refunded
   notes       text,                                -- customer's special requests
   notified    boolean not null default false,      -- order-confirmation email sent (by Apps Script)
+  cancel_requested boolean not null default false, -- customer asked to cancel (owner decides)
   step        integer not null default 0,          -- legacy; step is now derived from status
   courier     text,
   tracking_no text,
@@ -293,3 +294,54 @@ drop policy if exists "payment proof upload" on storage.objects;
 create policy "payment proof upload"
   on storage.objects for insert to anon, authenticated
   with check (bucket_id = 'payment-proofs');
+
+-- ============================================================================
+-- CANCELLATION + REFUND
+-- ============================================================================
+
+-- Customer-initiated cancellation request (only before shipping). Sets a flag;
+-- the owner reviews it and sets status to 'cancelled' or 'refunded'.
+create or replace function public.request_cancellation(p_code text)
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  update public.orders
+  set cancel_requested = true
+  where order_code = upper(trim(p_code))
+    and status in ('received', 'awaiting_payment', 'confirmed', 'preparing');
+$$;
+
+grant execute on function public.request_cancellation(text) to anon, authenticated;
+
+-- When an order becomes cancelled/refunded, put its items back into inventory
+-- and log a 'cancellation' movement (once, on the transition).
+create or replace function public.restock_on_cancel()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare v_item jsonb;
+begin
+  if new.status in ('cancelled', 'refunded') and old.status not in ('cancelled', 'refunded') then
+    for v_item in select * from jsonb_array_elements(new.items)
+    loop
+      update public.inventory
+        set qty = qty + coalesce((v_item->>'qty')::int, 1)
+        where product_id = v_item->>'id';
+      if found then
+        insert into public.stock_movements (product_id, delta, reason, order_code)
+        values (v_item->>'id', coalesce((v_item->>'qty')::int, 1), 'cancellation', new.order_code);
+      end if;
+    end loop;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists orders_restock_on_cancel on public.orders;
+create trigger orders_restock_on_cancel
+  before update of status on public.orders
+  for each row execute function public.restock_on_cancel();

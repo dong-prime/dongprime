@@ -126,6 +126,13 @@ export async function fetchMyOrders(userId) {
   return data || [];
 }
 
+// Customer asks to cancel an order (owner confirms + handles any refund).
+export async function requestCancellation(code) {
+  if (!supabase) return { error: { message: "Supabase not configured" } };
+  const { error } = await supabase.rpc("request_cancellation", { p_code: code });
+  return { error };
+}
+
 // Upload a payment receipt to the private bucket and attach it to the order.
 export async function uploadPaymentProof(orderCode, file) {
   if (!supabase) return { error: { message: "Supabase not configured" } };

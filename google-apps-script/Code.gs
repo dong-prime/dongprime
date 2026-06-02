@@ -108,7 +108,7 @@ function refreshStock() {
   sh.getRange(2, 4, out.length, 1).setValues(out); // column D = stock_qty
 }
 
-var ORDER_STATUSES = ['received', 'awaiting_payment', 'confirmed', 'preparing', 'shipped', 'delivered', 'cancelled'];
+var ORDER_STATUSES = ['received', 'awaiting_payment', 'confirmed', 'preparing', 'shipped', 'delivered', 'cancelled', 'refunded'];
 
 /** Build a temporary (7-day) signed URL so the owner can click to view a receipt. */
 function signedProofUrl_(c, path) {
@@ -137,7 +137,7 @@ function pullOrders() {
   });
   var rows = JSON.parse(res.getContentText());
   var sh = SpreadsheetApp.getActive().getSheetByName('Orders');
-  var header = ['order_code', 'created_at', 'status', 'tracking_no', 'name', 'phone', 'email', 'items', 'delivery', 'payment', 'address', 'total', 'notes', 'proof'];
+  var header = ['order_code', 'created_at', 'status', 'tracking_no', 'name', 'phone', 'email', 'items', 'delivery', 'payment', 'address', 'total', 'notes', 'proof', 'cancel_req'];
   sh.clearContents();
   sh.getRange(1, 1, 1, header.length).setValues([header]);
   if (!rows.length) return;
@@ -149,7 +149,8 @@ function pullOrders() {
     var cu = o.customer || {};
     var proof = o.proof_url ? signedProofUrl_(c, o.proof_url) : '';
     return [o.order_code, o.created_at, o.status || 'received', o.tracking_no || '', cu.name || '', cu.phone || '',
-            cu.email || '', items, o.delivery || '', o.pay_pref || '', addr, o.total || 0, o.notes || '', proof];
+            cu.email || '', items, o.delivery || '', o.pay_pref || '', addr, o.total || 0, o.notes || '', proof,
+            o.cancel_requested ? 'YES' : ''];
   });
   sh.getRange(2, 1, data.length, header.length).setValues(data);
   // status dropdown on column C

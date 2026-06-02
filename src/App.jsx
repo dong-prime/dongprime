@@ -9,7 +9,7 @@ import {
 import {
   supabase, fetchProducts,
   signUpUser, signInUser, signOutUser, getProfile, toAppUser,
-  placeOrder, lookupOrder, fetchMyOrders, uploadPaymentProof,
+  placeOrder, lookupOrder, fetchMyOrders, uploadPaymentProof, requestCancellation,
 } from "./lib/supabase";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -478,7 +478,10 @@ export default function App() {
     payPref: r.pay_pref,
     delivery: r.delivery,
     status: r.status || "received",
-    cancelled: r.status === "cancelled",
+    cancelled: r.status === "cancelled" || r.status === "refunded",
+    refunded: r.status === "refunded",
+    cancelRequested: !!r.cancel_requested,
+    cancellable: ["received", "awaiting_payment", "confirmed", "preparing"].includes(r.status || "received"),
     notes: r.notes || "",
     steps: trackStepsFor(r.delivery, r.pay_pref),
     step: statusToStep(r.status || "received", r.delivery),
@@ -591,6 +594,14 @@ export default function App() {
     setProofBusy(false);
     if (res.error) { setTrackMsg("Upload failed: " + res.error.message); return; }
     setProof(file.name);
+  };
+
+  const handleCancelRequest = async () => {
+    if (!activeOrder) return;
+    setTrackMsg("");
+    const { error } = await requestCancellation(activeOrder.id);
+    if (error) { setTrackMsg("Could not send the request: " + error.message); return; }
+    setActiveOrder({ ...activeOrder, cancelRequested: true });
   };
 
   const itemProduct = (item) => products.find((p) => p.id === item.id) || products.find((p) => p.name === item.name) || products[0] || PRODUCTS[1];
@@ -1848,9 +1859,17 @@ export default function App() {
 
                   {activeOrder.cancelled ? (
                     <div className="notice" style={{marginTop:18,borderColor:"rgba(195,86,86,.5)",color:"#E79A9A",background:"rgba(195,86,86,.08)"}}>
-                      This order was cancelled. If this is unexpected, please message us on WhatsApp.
+                      {activeOrder.refunded
+                        ? "This order was cancelled and your payment has been refunded. Allow a little time for it to reflect."
+                        : "This order was cancelled. If this is unexpected, please message us on WhatsApp."}
                     </div>
                   ) : (
+                  <>
+                  {activeOrder.cancelRequested && (
+                    <div className="notice" style={{marginTop:18,borderColor:"var(--line)",color:"var(--gold2)",background:"rgba(200,146,42,.06)"}}>
+                      Cancellation requested — we'll confirm and process any refund shortly.
+                    </div>
+                  )}
                   <div style={{marginTop:20}}>
                     {activeOrder.steps.map((s, i) => {
                       const done = i < activeOrder.step;
@@ -1900,6 +1919,10 @@ export default function App() {
                       );
                     })}
                   </div>
+                  {activeOrder.cancellable && !activeOrder.cancelRequested && (
+                    <button className="btn ghost" style={{marginTop:6}} onClick={handleCancelRequest}>Request cancellation</button>
+                  )}
+                  </>
                   )}
 
                   <a className="btn ghost" href={wa(`Hi Dong Prime, I want to ask about order ${activeOrder.id}.`)} target="_blank" rel="noreferrer">
