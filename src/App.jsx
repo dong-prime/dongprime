@@ -1588,9 +1588,9 @@ export default function App() {
                 <ShopCard key={p.id} product={p} onAdd={addItem} onOpen={openProduct} />
               ))}
 
-              <a className="btn ghost" style={{marginTop:14}} href={wa("Hi Dong Prime, could you send me the full catalog?")} target="_blank" rel="noreferrer">
-                <MessageCircle size={16}/>Request full catalog
-              </a>
+              <button className="btn primary" style={{marginTop:14}} onClick={() => go("order")}>
+                Checkout{count > 0 ? ` · ${count} item${count > 1 ? "s" : ""}` : ""} <ChevronRight size={16}/>
+              </button>
             </section>
           )}
 
