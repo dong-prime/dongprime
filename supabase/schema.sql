@@ -55,7 +55,9 @@ create table if not exists public.orders (
   meet        jsonb,                               -- null unless delivery = meetup
   pay_pref    text,                                -- 'gcash' | 'card'
   delivery    text,                                -- 'courier' | 'cod' | 'meetup'
-  step        integer not null default 0,          -- current tracking step index
+  status      text not null default 'received',    -- received|confirmed|preparing|shipped|delivered|cancelled
+  notes       text,                                -- customer's special requests
+  step        integer not null default 0,          -- legacy; step is now derived from status
   courier     text,
   tracking_no text,
   proof_url   text,                                -- uploaded GCash receipt (storage)
@@ -216,7 +218,8 @@ create or replace function public.place_order(
   p_meet     jsonb,
   p_pay_pref text,
   p_delivery text,
-  p_total    integer
+  p_total    integer,
+  p_notes    text default null
 )
 returns public.orders
 language plpgsql
@@ -227,7 +230,6 @@ declare
   v_code  text;
   v_order public.orders;
   v_item  jsonb;
-  v_step  integer;
 begin
   -- generate a unique DP-XXXXX code
   loop
@@ -235,13 +237,10 @@ begin
     exit when not exists (select 1 from public.orders where order_code = v_code);
   end loop;
 
-  -- COD starts at "Confirmed" (step 1); others start at "Received" (step 0)
-  v_step := case when p_delivery = 'cod' then 1 else 0 end;
-
   insert into public.orders
-    (order_code, user_id, customer, items, address, meet, pay_pref, delivery, step, courier, total)
+    (order_code, user_id, customer, items, address, meet, pay_pref, delivery, status, notes, courier, total)
   values
-    (v_code, auth.uid(), p_customer, p_items, p_address, p_meet, p_pay_pref, p_delivery, v_step, 'J&T Express', coalesce(p_total, 0))
+    (v_code, auth.uid(), p_customer, p_items, p_address, p_meet, p_pay_pref, p_delivery, 'received', p_notes, 'J&T Express', coalesce(p_total, 0))
   returning * into v_order;
 
   -- decrement stock and log a 'sale' movement per line item
@@ -260,7 +259,7 @@ begin
 end;
 $$;
 
-grant execute on function public.place_order(jsonb,jsonb,jsonb,jsonb,text,text,integer) to anon, authenticated;
+grant execute on function public.place_order(jsonb,jsonb,jsonb,jsonb,text,text,integer,text) to anon, authenticated;
 
 -- ============================================================================
 -- ATTACH PAYMENT PROOF

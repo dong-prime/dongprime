@@ -275,6 +275,19 @@ function trackStepsFor(delivery, payPref) {
   ];
 }
 
+// Named order status (owner-editable) → current step index, per delivery type.
+const STEP_MAP = {
+  cod:     { received: 0, confirmed: 1, preparing: 2, shipped: 3, delivered: 4 },
+  meetup:  { received: 0, confirmed: 2, preparing: 3, shipped: 4, delivered: 5 },
+  courier: { received: 0, confirmed: 2, preparing: 3, shipped: 4, delivered: 5 },
+};
+const ORDER_STATUSES = ["received", "confirmed", "preparing", "shipped", "delivered", "cancelled"];
+
+function statusToStep(status, delivery) {
+  const map = STEP_MAP[delivery] || STEP_MAP.courier;
+  return map[status] != null ? map[status] : 0;
+}
+
 function ProductThumb({ product, size = 42 }) {
   return (
     <img
@@ -463,8 +476,11 @@ export default function App() {
     customer: r.customer || {},
     payPref: r.pay_pref,
     delivery: r.delivery,
+    status: r.status || "received",
+    cancelled: r.status === "cancelled",
+    notes: r.notes || "",
     steps: trackStepsFor(r.delivery, r.pay_pref),
-    step: r.step ?? 0,
+    step: statusToStep(r.status || "received", r.delivery),
     courier: r.courier || "J&T Express",
     trackingNo: r.tracking_no || "",
     proofUrl: r.proof_url || "",
@@ -488,6 +504,7 @@ export default function App() {
       p_pay_pref: payPref,
       p_delivery: delivery,
       p_total: total,
+      p_notes: notes || null,
     });
 
     // Build the local order: from the saved DB row, or a local fallback if the
@@ -501,8 +518,11 @@ export default function App() {
           meet: isMeetup ? meet : null,
           customer: cust,
           payPref, delivery,
+          status: "received",
+          cancelled: false,
+          notes: notes || "",
           steps: trackStepsFor(delivery, payPref),
-          step: delivery === "cod" ? 1 : 0,
+          step: 0,
           courier: "J&T Express",
           trackingNo: "",
           placedAt: new Date().toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" }),
@@ -1810,6 +1830,11 @@ export default function App() {
                   <h2 className="title" style={{fontSize:24}}>Track order</h2>
                   <p className="subtitle">Order {activeOrder.id}</p>
 
+                  {activeOrder.cancelled ? (
+                    <div className="notice" style={{marginTop:18,borderColor:"rgba(195,86,86,.5)",color:"#E79A9A",background:"rgba(195,86,86,.08)"}}>
+                      This order was cancelled. If this is unexpected, please message us on WhatsApp.
+                    </div>
+                  ) : (
                   <div style={{marginTop:20}}>
                     {activeOrder.steps.map((s, i) => {
                       const done = i < activeOrder.step;
@@ -1859,6 +1884,7 @@ export default function App() {
                       );
                     })}
                   </div>
+                  )}
 
                   <a className="btn ghost" href={wa(`Hi Dong Prime, I want to ask about order ${activeOrder.id}.`)} target="_blank" rel="noreferrer">
                     <MessageCircle size={16}/>Ask about this order

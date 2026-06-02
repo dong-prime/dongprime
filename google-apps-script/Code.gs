@@ -31,8 +31,8 @@ function setup() {
   refreshAll();
   ScriptApp.getProjectTriggers().forEach(function (t) { ScriptApp.deleteTrigger(t); });
   ScriptApp.newTrigger('refreshAll').timeBased().everyMinutes(5).create();
-  ScriptApp.newTrigger('onEditProducts').forSpreadsheet(SpreadsheetApp.getActive()).onEdit().create();
-  SpreadsheetApp.getActive().toast('Setup done: Orders + Movements auto-refresh every 5 min, Products edits push to the site.');
+  ScriptApp.newTrigger('onEditRouter').forSpreadsheet(SpreadsheetApp.getActive()).onEdit().create();
+  SpreadsheetApp.getActive().toast('Setup done: Orders + Movements auto-refresh every 5 min; Products/Orders edits push to the site.');
 }
 
 /** Refresh all read-only views (called by the 5-min trigger). */
@@ -68,7 +68,13 @@ function refreshStock() {
   sh.getRange(2, 4, out.length, 1).setValues(out); // column D = stock_qty
 }
 
-/** Orders: Supabase → "Orders" sheet (read-only view, rewritten each run). */
+var ORDER_STATUSES = ['received', 'confirmed', 'preparing', 'shipped', 'delivered', 'cancelled'];
+
+/**
+ * Orders: Supabase → "Orders" sheet. Rewritten each run.
+ * Columns C (status) and D (tracking_no) are EDITABLE — editing them pushes
+ * back to the DB (see onEditOrders). Everything else is read-only.
+ */
 function pullOrders() {
   var c = cfg_();
   var res = UrlFetchApp.fetch(c.url + '/rest/v1/orders?select=*&order=created_at.desc', {
@@ -76,7 +82,7 @@ function pullOrders() {
   });
   var rows = JSON.parse(res.getContentText());
   var sh = SpreadsheetApp.getActive().getSheetByName('Orders');
-  var header = ['order_code', 'created_at', 'name', 'phone', 'email', 'items', 'delivery', 'payment', 'address', 'total', 'step', 'proof'];
+  var header = ['order_code', 'created_at', 'status', 'tracking_no', 'name', 'phone', 'email', 'items', 'delivery', 'payment', 'address', 'total', 'notes', 'proof'];
   sh.clearContents();
   sh.getRange(1, 1, 1, header.length).setValues([header]);
   if (!rows.length) return;
@@ -86,10 +92,13 @@ function pullOrders() {
       ? [o.address.street, o.address.barangay, o.address.city, o.address.region].filter(Boolean).join(', ')
       : (o.meet ? ('Meetup: ' + (o.meet.place || '') + ' ' + (o.meet.when || '')) : '');
     var cu = o.customer || {};
-    return [o.order_code, o.created_at, cu.name || '', cu.phone || '', cu.email || '',
-            items, o.delivery || '', o.pay_pref || '', addr, o.total || 0, o.step || 0, o.proof_url || ''];
+    return [o.order_code, o.created_at, o.status || 'received', o.tracking_no || '', cu.name || '', cu.phone || '',
+            cu.email || '', items, o.delivery || '', o.pay_pref || '', addr, o.total || 0, o.notes || '', o.proof_url || ''];
   });
   sh.getRange(2, 1, data.length, header.length).setValues(data);
+  // status dropdown on column C
+  var rule = SpreadsheetApp.newDataValidation().requireValueInList(ORDER_STATUSES, true).build();
+  sh.getRange(2, 3, data.length, 1).setDataValidation(rule);
 }
 
 /** Stock movements: Supabase → "Movements" sheet (read-only ledger). */
@@ -128,6 +137,30 @@ function pullProducts() {
     return [p.id, p.name, p.price, qty, p.active];
   });
   if (data.length) sh.getRange(2, 1, data.length, header.length).setValues(data);
+}
+
+/** Routes edit events to the right handler by sheet name. */
+function onEditRouter(e) {
+  var name = e.range.getSheet().getName();
+  if (name === 'Products') onEditProducts(e);
+  else if (name === 'Orders') onEditOrders(e);
+}
+
+/** Orders: editing status (col C) or tracking_no (col D) → Supabase. */
+function onEditOrders(e) {
+  var sh = e.range.getSheet();
+  var row = e.range.getRow();
+  var col = e.range.getColumn();
+  if (row < 2 || (col !== 3 && col !== 4)) return; // only status / tracking_no
+  var c = cfg_();
+  var vals = sh.getRange(row, 1, 1, 4).getValues()[0]; // order_code, created_at, status, tracking_no
+  var code = vals[0];
+  if (!code) return;
+  UrlFetchApp.fetch(c.url + '/rest/v1/orders?order_code=eq.' + encodeURIComponent(code), {
+    method: 'patch', headers: headers_(), muteHttpExceptions: true,
+    payload: JSON.stringify({ status: String(vals[2] || 'received'), tracking_no: vals[3] || null }),
+  });
+  SpreadsheetApp.getActive().toast('Order ' + code + ' updated.');
 }
 
 /** Products: "Products" sheet edit → Supabase (price/name/active + inventory qty). */
