@@ -1434,8 +1434,8 @@ export default function App() {
 
               <div style={{display:"grid",gap:10,marginTop:18}}>
                 <button className="btn primary" onClick={() => go("shop")}>Shop now <ChevronRight size={16}/></button>
-                <a className="btn ghost" href={wa("Hi Dong Prime, could you send me the catalog?")} target="_blank" rel="noreferrer">
-                  <MessageCircle size={16}/>Request catalog on WhatsApp
+                <a className="btn ghost" href="https://docs.google.com/spreadsheets/d/1VKYSG2PxnMOE1hCkUoD4DsLUP2MW6v4g6Ny75hozhWo/edit?gid=0#gid=0" target="_blank" rel="noreferrer">
+                  <LayoutGrid size={16}/>View catalog
                 </a>
               </div>
 
