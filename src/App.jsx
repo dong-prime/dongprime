@@ -149,6 +149,19 @@ const blankAddr = { region: "", city: "", barangay: "", street: "", zip: "" };
 const peso = (n) => "₱" + Number(n || 0).toLocaleString("en-PH");
 const fmtAddr = (a) => [a.street, a.barangay && "Brgy. " + a.barangay, a.city, a.region].filter(Boolean).join(", ");
 
+// Bank transfer details shown to customers (placeholder for now).
+const BANK_ACCOUNT = "XXX-XXX-XXXX";
+// Prepaid methods require a payment receipt before fulfilment; cash does not.
+const PREPAID = ["gcash", "bank"];
+const isPrepaid = (payPref) => PREPAID.includes(payPref);
+// Payment methods available per delivery method.
+const paymentsFor = (delivery) => (delivery === "cod" ? ["cash", "bank"] : ["gcash", "bank"]);
+const PAY_LABELS = {
+  gcash: { t: "GCash", d: "Send to our GCash, then upload the receipt" },
+  cash: { t: "Cash", d: "Pay the rider in cash on arrival" },
+  bank: { t: "Bank transfer", d: "Transfer to our account, then upload proof" },
+};
+
 // A "Box option" is a 10-pack priced at the single-unit price × 10.
 const BOX_UNITS = 10;
 const isBox = (fmt) => /box/i.test(fmt || "");
@@ -259,47 +272,42 @@ function AddressFields({ addr, setAddr }) {
   );
 }
 
+// Tracking steps by payment + delivery.
+//  - Prepaid (GCash/bank): Received → Awaiting payment (upload proof) →
+//    Payment received → Preparing → Shipped/Out for delivery → Delivered.
+//  - Cash (COD only): Received → Confirmed → Preparing → Out for delivery →
+//    Delivered & paid.  (no upfront payment, no upload)
 function trackStepsFor(delivery, payPref) {
+  const prepaid = isPrepaid(payPref);
+  const steps = [{ t: "Received", d: "We got your order request." }];
+  if (prepaid) {
+    const how = payPref === "bank"
+      ? `Transfer to ${BANK_ACCOUNT}, then upload your deposit slip.`
+      : "We will send GCash details, then upload your receipt.";
+    steps.push({ t: "Awaiting payment", d: how, upload: true });
+    steps.push({ t: "Payment received", d: "Payment confirmed — thank you." });
+  } else {
+    steps.push({ t: "Confirmed", d: "Price and stock confirmed. Pay cash on delivery." });
+  }
+  steps.push({ t: "Preparing", d: "Packing your items." });
   if (delivery === "cod") {
-    return [
-      { t: "Received", d: "We got your order request." },
-      { t: "Confirmed", d: "Price and stock confirmed. Pay on delivery or prepay on chat." },
-      { t: "Preparing", d: "Packing your items." },
-      { t: "Out for delivery", d: "Your order is on the way.", ship: true },
-      { t: "Delivered & paid", d: "All done — thank you." },
-    ];
+    steps.push({ t: "Out for delivery", d: "Your order is on the way.", ship: true });
+    steps.push({ t: prepaid ? "Delivered" : "Delivered & paid", d: "All done — thank you." });
+  } else {
+    steps.push({ t: "Shipped", d: "Handed to the courier.", ship: true });
+    steps.push({ t: "Delivered", d: "All done — enjoy." });
   }
-  if (delivery === "meetup") {
-    return [
-      { t: "Received", d: "We got your order request." },
-      { t: "Awaiting payment", d: payPref === "gcash" ? "We will send GCash details." : "We will send a secure payment link." },
-      { t: "Payment received", d: "Payment confirmed — thank you." },
-      { t: "Preparing", d: "Packing your items." },
-      { t: "Ready for meetup", d: "We will meet at the agreed place and time.", meetup: true },
-      { t: "Handed over", d: "All done — enjoy." },
-    ];
-  }
-  return [
-    { t: "Received", d: "We got your order request." },
-    { t: "Awaiting payment", d: payPref === "gcash" ? "We will send GCash details, then upload your receipt." : "We will send a secure card payment link.", upload: payPref === "gcash" },
-    { t: "Payment received", d: "Payment confirmed — thank you." },
-    { t: "Preparing", d: "Packing your items." },
-    { t: "Shipped", d: "Handed to the courier.", ship: true },
-    { t: "Delivered", d: "All done — enjoy." },
-  ];
+  return steps;
 }
 
-// Named order status (owner-editable) → current step index, per delivery type.
-// 'awaiting_payment' lands on the step that shows the GCash receipt upload.
-const STEP_MAP = {
-  cod:     { received: 0, awaiting_payment: 1, confirmed: 1, preparing: 2, shipped: 3, delivered: 4 },
-  meetup:  { received: 0, awaiting_payment: 1, confirmed: 2, preparing: 3, shipped: 4, delivered: 5 },
-  courier: { received: 0, awaiting_payment: 1, confirmed: 2, preparing: 3, shipped: 4, delivered: 5 },
-};
-const ORDER_STATUSES = ["received", "awaiting_payment", "confirmed", "preparing", "shipped", "delivered", "cancelled"];
+const ORDER_STATUSES = ["received", "awaiting_payment", "confirmed", "preparing", "shipped", "delivered", "cancelled", "refunded"];
 
-function statusToStep(status, delivery) {
-  const map = STEP_MAP[delivery] || STEP_MAP.courier;
+// Owner status → current step index. Index lists differ for prepaid (6 steps)
+// vs cash (5 steps), so the mapping depends on the payment method.
+function statusToStep(status, delivery, payPref) {
+  const map = isPrepaid(payPref)
+    ? { received: 0, awaiting_payment: 1, confirmed: 2, preparing: 3, shipped: 4, delivered: 5 }
+    : { received: 0, awaiting_payment: 1, confirmed: 1, preparing: 2, shipped: 3, delivered: 4 };
   return map[status] != null ? map[status] : 0;
 }
 
@@ -423,10 +431,17 @@ export default function App() {
   const count = sel.reduce((s, i) => s + i.qty, 0);
   const subtotal = sel.reduce((s, i) => s + (i.price || 0) * i.qty, 0);
   const total = subtotal + SHIPPING;
-  const isMeetup = delivery === "meetup";
   const effAddr = user?.savedAddress && useSaved ? user.savedAddress : addr;
-  const addrOk = isMeetup ? Boolean(meet.place && meet.when) : Boolean(effAddr.region && effAddr.city && effAddr.barangay && effAddr.street);
+  const addrOk = Boolean(effAddr.region && effAddr.city && effAddr.barangay && effAddr.street);
   const validOrder = Boolean(cust.name && cust.phone && cust.email && addrOk && agree && sel.length > 0);
+
+  // Keep the chosen payment valid for the chosen delivery method.
+  const payOptions = paymentsFor(delivery);
+  const pickDelivery = (d) => {
+    setDelivery(d);
+    const opts = paymentsFor(d);
+    if (!opts.includes(payPref)) setPayPref(opts[0]);
+  };
   const navActive = { home: "home", shop: "shop", detail: "shop", order: "orders", review: "orders", done: "orders", track: "orders", account: "account", auth: "account", policy: "home" }[view] || "home";
 
   const go = (v) => setView(v);
@@ -573,7 +588,7 @@ export default function App() {
     refundable: (r.status || "received") === "delivered",
     notes: r.notes || "",
     steps: trackStepsFor(r.delivery, r.pay_pref),
-    step: statusToStep(r.status || "received", r.delivery),
+    step: statusToStep(r.status || "received", r.delivery, r.pay_pref),
     courier: r.courier || "J&T Express",
     trackingNo: r.tracking_no || "",
     proofUrl: r.proof_url || "",
@@ -592,8 +607,8 @@ export default function App() {
     const { data, error } = await placeOrder({
       p_customer: cust,
       p_items: itemsPayload,
-      p_address: isMeetup ? null : effAddr,
-      p_meet: isMeetup ? meet : null,
+      p_address: effAddr,
+      p_meet: null,
       p_pay_pref: payPref,
       p_delivery: delivery,
       p_total: total,
@@ -607,8 +622,8 @@ export default function App() {
       : {
           id: "DP-" + Math.random().toString(36).slice(2, 7).toUpperCase(),
           items: itemsPayload,
-          address: isMeetup ? null : effAddr,
-          meet: isMeetup ? meet : null,
+          address: effAddr,
+          meet: null,
           customer: cust,
           payPref, delivery,
           status: "received",
@@ -1777,9 +1792,8 @@ export default function App() {
               {[
                 { k:"courier", I:Truck, t:"Courier delivery", d:"J&T / LBC — fee & ETA confirmed on chat" },
                 { k:"cod", I:Package, t:"Cash on delivery", d:"Pay the rider on arrival where available" },
-                { k:"meetup", I:Users, t:"Meetup", d:"Hand over at an agreed place & time" },
               ].map(({k,I,t,d}) => (
-                <button key={k} className={delivery === k ? "opt active" : "opt"} onClick={() => setDelivery(k)}>
+                <button key={k} className={delivery === k ? "opt active" : "opt"} onClick={() => pickDelivery(k)}>
                   <div className="opt-ic"><I size={18}/></div>
                   <div style={{flex:1,textAlign:"left"}}>
                     <div className="pname">{t}</div>
@@ -1789,36 +1803,29 @@ export default function App() {
                 </button>
               ))}
 
-              {isMeetup ? (
-                <>
-                  <div className="section-label">Meetup details</div>
-                  <div className="field"><label><MapPin size={12}/>Preferred place</label><input value={meet.place} placeholder="e.g. SM Megamall, Mandaluyong" onChange={(e) => setMeet({...meet, place:e.target.value})}/></div>
-                  <div className="field"><label><Clock size={12}/>Preferred date & time</label><input value={meet.when} placeholder="Sat Jun 14, 3pm" onChange={(e) => setMeet({...meet, when:e.target.value})}/></div>
-                </>
-              ) : (
-                <>
-                  <div className="section-label">Delivery address</div>
-                  {user?.savedAddress && (
-                    <div className="banner">
-                      <span>Use saved address?</span>
-                      <button className="link" onClick={() => { setUseSaved(!useSaved); if (!useSaved) setAddr(user.savedAddress); }}>{useSaved ? "Using saved" : "Use saved"}</button>
-                    </div>
-                  )}
-                  <AddressFields addr={addr} setAddr={setAddr} />
-                </>
+              <div className="section-label">Delivery address</div>
+              {user?.savedAddress && (
+                <div className="banner">
+                  <span>Use saved address?</span>
+                  <button className="link" onClick={() => { setUseSaved(!useSaved); if (!useSaved) setAddr(user.savedAddress); }}>{useSaved ? "Using saved" : "Use saved"}</button>
+                </div>
               )}
+              <AddressFields addr={addr} setAddr={setAddr} />
 
-              <div className="section-label">Payment preference</div>
-              {[
-                { k:"gcash", I:WalletCards, t:"GCash", d:"Details sent after confirmation" },
-                { k:"card", I:CreditCard, t:"Card / other", d:"We will send a payment link" },
-              ].map(({k,I,t,d}) => (
+              <div className="section-label">Payment method</div>
+              {payOptions.map((k) => (
                 <button key={k} className={payPref === k ? "opt active" : "opt"} onClick={() => setPayPref(k)}>
-                  <div className="opt-ic"><I size={18}/></div>
-                  <div style={{flex:1,textAlign:"left"}}><div className="pname">{t}</div><div className="pdesc">{d}</div></div>
+                  <div className="opt-ic">{k === "gcash" ? <WalletCards size={18}/> : k === "cash" ? <Package size={18}/> : <CreditCard size={18}/>}</div>
+                  <div style={{flex:1,textAlign:"left"}}><div className="pname">{PAY_LABELS[k].t}</div><div className="pdesc">{PAY_LABELS[k].d}</div></div>
                   <div className="radio">{payPref === k && <Check size={12}/>}</div>
                 </button>
               ))}
+              {payPref === "bank" && (
+                <div className="notice" style={{marginTop:8}}>
+                  <b style={{color:"var(--gold2)"}}>Bank transfer</b><br/>
+                  Transfer to account <b style={{color:"var(--ink)"}}>{BANK_ACCOUNT}</b>, then upload your deposit photo on the tracking page after ordering.
+                </div>
+              )}
 
               <div className="field"><label>Notes / special requests</label><textarea value={notes} placeholder="Type your request..." onChange={(e) => setNotes(e.target.value)}/></div>
 
@@ -1828,7 +1835,7 @@ export default function App() {
               </button>
 
               <button className="btn primary" disabled={!validOrder} onClick={() => go("review")}>Review order <ChevronRight size={16}/></button>
-              {!validOrder && <div className="footer-note">Add at least one item, fill your details, address/meetup, and tick the confirmation.</div>}
+              {!validOrder && <div className="footer-note">Add at least one item, fill your details and address, and tick the confirmation.</div>}
             </section>
           )}
 
@@ -1857,21 +1864,12 @@ export default function App() {
               <div className="review-row"><span>Phone</span><b>{cust.phone}</b></div>
               <div className="review-row"><span>Email</span><b>{cust.email}</b></div>
 
-              {isMeetup ? (
-                <>
-                  <div className="section-label">Meetup details</div>
-                  <div className="review-row"><span>Place</span><b>{meet.place}</b></div>
-                  <div className="review-row"><span>When</span><b>{meet.when}</b></div>
-                </>
-              ) : (
-                <>
-                  <div className="section-label">Deliver to</div>
-                  <div className="review-row"><span>Address</span><b>{fmtAddr(effAddr)}</b></div>
-                </>
-              )}
+              <div className="section-label">Deliver to</div>
+              <div className="review-row"><span>Address</span><b>{fmtAddr(effAddr)}</b></div>
 
-              <div className="review-row"><span>Delivery</span><b>{delivery === "courier" ? "Courier delivery" : delivery === "cod" ? "Cash on delivery" : "Meetup"}</b></div>
-              <div className="review-row"><span>Payment</span><b>{payPref === "gcash" ? "GCash" : "Card / other"}</b></div>
+              <div className="review-row"><span>Delivery</span><b>{delivery === "cod" ? "Cash on delivery" : "Courier delivery"}</b></div>
+              <div className="review-row"><span>Payment</span><b>{PAY_LABELS[payPref]?.t || payPref}</b></div>
+              {payPref === "bank" && <div className="review-row"><span>Bank account</span><b>{BANK_ACCOUNT}</b></div>}
               {notes && <div className="review-row"><span>Notes</span><b>{notes}</b></div>}
 
               <div className="notice" style={{marginTop:16}}>
@@ -1895,11 +1893,11 @@ export default function App() {
                 <div className="thumb" style={{width:64,minWidth:64,height:70}}><ProductThumb product={itemProduct(activeOrder.items[0])} size={44}/></div>
                 <div>
                   <b style={{color:"var(--gold2)"}}>What happens next</b>
-                  <p style={{marginTop:6}}>{delivery === "cod"
-                    ? "We will confirm the price, stock, and total on WhatsApp. Pay the rider on delivery."
-                    : delivery === "meetup"
-                      ? "We will confirm details on WhatsApp, then lock in the meetup schedule."
-                      : "We will confirm total and send payment details. After payment, upload your receipt on the tracking page."}
+                  <p style={{marginTop:6}}>{activeOrder.payPref === "cash"
+                    ? "We will confirm the price, stock, and total on WhatsApp. Pay the rider in cash on delivery."
+                    : activeOrder.payPref === "bank"
+                      ? `We will confirm your total. Transfer to ${BANK_ACCOUNT}, then upload your deposit photo on the tracking page.`
+                      : "We will confirm your total and send GCash details. After paying, upload your receipt on the tracking page."}
                   </p>
                 </div>
               </div>
@@ -2025,15 +2023,8 @@ export default function App() {
 
                             {current && s.ship && (
                               <div className="track-box">
-                                Courier: <b style={{color:"var(--ink)"}}>{activeOrder.courier}</b><br/>
-                                Tracking no.: <b style={{color:"var(--ink)"}}>{activeOrder.trackingNo}</b>
-                              </div>
-                            )}
-
-                            {current && s.meetup && activeOrder.meet && (
-                              <div className="track-box">
-                                Place: <b style={{color:"var(--ink)"}}>{activeOrder.meet.place}</b><br/>
-                                Date & time: <b style={{color:"var(--ink)"}}>{activeOrder.meet.when}</b>
+                                Courier: <b style={{color:"var(--ink)"}}>{activeOrder.courier}</b>
+                                {activeOrder.trackingNo && <><br/>Tracking no.: <b style={{color:"var(--ink)"}}>{activeOrder.trackingNo}</b></>}
                               </div>
                             )}
                           </div>

@@ -243,10 +243,10 @@ begin
     exit when not exists (select 1 from public.orders where order_code = v_code);
   end loop;
 
-  -- Initial status by type: COD needs no upfront payment, so it skips straight
-  -- to "confirmed"; prepaid (GCash/card) starts at "awaiting_payment" so the
-  -- customer can pay and upload their receipt right away.
-  v_status := case when p_delivery = 'cod' then 'confirmed' else 'awaiting_payment' end;
+  -- Initial status by payment: prepaid (GCash/bank) starts at "awaiting_payment"
+  -- so the customer can pay + upload proof right away; cash needs no upfront
+  -- payment, so it starts at "confirmed".
+  v_status := case when p_pay_pref in ('gcash', 'bank') then 'awaiting_payment' else 'confirmed' end;
 
   insert into public.orders
     (order_code, user_id, customer, items, address, meet, pay_pref, delivery, status, notes, courier, total)
