@@ -551,6 +551,16 @@ export default function App() {
     return () => { active = false; };
   }, [user]);
 
+  // Deep link: opening ?track=DP-XXXX (e.g. from a confirmation email) jumps
+  // straight to that order's tracking page.
+  useEffect(() => {
+    const code = new URLSearchParams(window.location.search).get("track");
+    if (!code) return;
+    lookupOrder(code).then((row) => {
+      if (row) { setActiveOrder(dbRowToOrder(row)); go("track"); }
+    });
+  }, []);
+
   // Orders to show in lists: this session's + the user's saved ones, deduped.
   const recentOrders = useMemo(() => {
     const seen = new Set();
