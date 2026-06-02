@@ -1,0 +1,142 @@
+-- ============================================================================
+-- Dong Prime Peptides — Supabase schema
+-- Run this in the Supabase dashboard → SQL Editor (once).
+-- Safe to re-run: uses "if not exists" / "or replace" where possible.
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- PRODUCTS
+--   Catalog. Read by everyone (public site). Managed via dashboard for now.
+-- ----------------------------------------------------------------------------
+create table if not exists public.products (
+  id          text primary key,                 -- slug, e.g. 'tirzepatide-15mg'
+  name        text not null,
+  label_name  text,
+  dose        text,
+  focus       text,
+  descr       text,                              -- short description (one line)
+  detail      text,                              -- long description
+  capacity    text,
+  category    text,                              -- research focus label
+  formats     text[] not null default '{}',      -- e.g. {'Single vial','Box option'}
+  stock       text   not null default 'in',      -- 'in' | 'low' | 'out'
+  price       integer not null default 0,        -- whole PHP pesos
+  image_url   text,                              -- '/assets/xxx.png' or storage URL
+  sort_order  integer not null default 0,
+  active      boolean not null default true,
+  created_at  timestamptz not null default now()
+);
+
+-- ----------------------------------------------------------------------------
+-- PROFILES
+--   1:1 with auth.users. Holds the customer details + saved address.
+-- ----------------------------------------------------------------------------
+create table if not exists public.profiles (
+  id            uuid primary key references auth.users(id) on delete cascade,
+  name          text,
+  phone         text,
+  email         text,
+  saved_address jsonb,                            -- {region,city,barangay,street,zip}
+  created_at    timestamptz not null default now()
+);
+
+-- ----------------------------------------------------------------------------
+-- ORDERS
+--   Supports guest checkout (user_id null) and logged-in users.
+--   items/customer/address are snapshots taken at order time.
+-- ----------------------------------------------------------------------------
+create table if not exists public.orders (
+  id          uuid primary key default gen_random_uuid(),
+  order_code  text unique not null,               -- 'DP-XXXX' shown to customer
+  user_id     uuid references auth.users(id) on delete set null,  -- null = guest
+  customer    jsonb not null,                      -- {name, phone, email}
+  items       jsonb not null,                      -- [{id,name,labelName,dose,format,qty,price}]
+  address     jsonb,                               -- null when delivery = meetup
+  meet        jsonb,                               -- null unless delivery = meetup
+  pay_pref    text,                                -- 'gcash' | 'card'
+  delivery    text,                                -- 'courier' | 'cod' | 'meetup'
+  step        integer not null default 0,          -- current tracking step index
+  courier     text,
+  tracking_no text,
+  proof_url   text,                                -- uploaded GCash receipt (storage)
+  total       integer not null default 0,
+  created_at  timestamptz not null default now()
+);
+
+create index if not exists orders_user_id_idx on public.orders(user_id);
+create index if not exists orders_order_code_idx on public.orders(order_code);
+
+-- ============================================================================
+-- ROW LEVEL SECURITY
+-- ============================================================================
+alter table public.products enable row level security;
+alter table public.profiles enable row level security;
+alter table public.orders   enable row level security;
+
+-- products: anyone (even logged-out) can read active products
+drop policy if exists "products public read" on public.products;
+create policy "products public read"
+  on public.products for select
+  using (active = true);
+
+-- profiles: each user sees / edits only their own row
+drop policy if exists "profiles own read" on public.profiles;
+create policy "profiles own read"
+  on public.profiles for select using (auth.uid() = id);
+
+drop policy if exists "profiles own insert" on public.profiles;
+create policy "profiles own insert"
+  on public.profiles for insert with check (auth.uid() = id);
+
+drop policy if exists "profiles own update" on public.profiles;
+create policy "profiles own update"
+  on public.profiles for update using (auth.uid() = id);
+
+-- orders: anyone can create an order (guest checkout allowed)
+drop policy if exists "orders anyone insert" on public.orders;
+create policy "orders anyone insert"
+  on public.orders for insert with check (true);
+
+-- orders: a logged-in user can read their own orders
+drop policy if exists "orders own read" on public.orders;
+create policy "orders own read"
+  on public.orders for select using (auth.uid() = user_id);
+
+-- ============================================================================
+-- TRACKING BY ORDER CODE (without exposing the whole table)
+--   SECURITY DEFINER so a guest can look up exactly one order by its code.
+-- ============================================================================
+create or replace function public.get_order_by_code(p_code text)
+returns setof public.orders
+language sql
+security definer
+set search_path = public
+as $$
+  select * from public.orders
+  where order_code = upper(trim(p_code))
+  limit 1;
+$$;
+
+grant execute on function public.get_order_by_code(text) to anon, authenticated;
+
+-- ============================================================================
+-- AUTO-CREATE PROFILE ON SIGNUP
+-- ============================================================================
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.profiles (id, email)
+  values (new.id, new.email)
+  on conflict (id) do nothing;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();
