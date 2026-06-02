@@ -234,42 +234,42 @@ function AddressFields({ addr, setAddr }) {
   useEffect(() => { fetchCities(addr.regionCode).then(setCities); }, [addr.regionCode]);
   useEffect(() => { fetchBarangays(addr.cityCode).then(setBrgys); }, [addr.cityCode]);
 
+  // type-to-search backed by native <datalist>; resolves the typed name to a
+  // PSGC code so the next level can load.
   const onRegion = (e) => {
-    const r = regions.find((x) => x.name === e.target.value);
-    setAddr({ ...addr, region: r?.name || "", regionCode: r?.code || "", city: "", cityCode: "", barangay: "" });
+    const v = e.target.value;
+    const r = regions.find((x) => x.name === v);
+    setAddr({ ...addr, region: v, regionCode: r?.code || "", city: "", cityCode: "", barangay: "" });
   };
   const onCity = (e) => {
-    const c = cities.find((x) => x.name === e.target.value);
-    setAddr({ ...addr, city: c?.name || "", cityCode: c?.code || "", barangay: "" });
-  };
-
-  // A select that always shows the current value, even before its list loads.
-  const Select = ({ label, value, options, disabled, placeholder, onChange }) => {
-    const names = options.map((o) => o.name);
-    return (
-      <div className="field">
-        <label><MapPin size={12}/>{label}</label>
-        <div className="select-wrap">
-          <select value={value || ""} disabled={disabled} onChange={onChange}>
-            <option value="">{placeholder}</option>
-            {value && !names.includes(value) && <option value={value}>{value}</option>}
-            {options.map((o) => <option key={o.code} value={o.name}>{o.name}</option>)}
-          </select>
-          <ChevronDown size={15} className="select-icon" />
-        </div>
-      </div>
-    );
+    const v = e.target.value;
+    const c = cities.find((x) => x.name === v);
+    setAddr({ ...addr, city: v, cityCode: c?.code || "", barangay: "" });
   };
 
   return (
     <>
-      <Select label="Region" value={addr.region} options={regions} onChange={onRegion}
-        placeholder={regions.length ? "Select region" : "Loading regions…"} />
-      <Select label="City / Municipality" value={addr.city} options={cities} disabled={!addr.regionCode} onChange={onCity}
-        placeholder={!addr.regionCode ? "Choose region first" : cities.length ? "Select city" : "Loading…"} />
-      <Select label="Barangay" value={addr.barangay} options={brgys} disabled={!addr.cityCode}
-        onChange={(e) => setAddr({ ...addr, barangay: e.target.value })}
-        placeholder={!addr.cityCode ? "Choose city first" : brgys.length ? "Select barangay" : "Loading…"} />
+      <div className="field">
+        <label><MapPin size={12}/>Region</label>
+        <input list="dl-region" value={addr.region || ""} autoComplete="off"
+          placeholder={regions.length ? "Type or pick a region" : "Loading regions…"} onChange={onRegion} />
+        <datalist id="dl-region">{regions.map((o) => <option key={o.code} value={o.name} />)}</datalist>
+      </div>
+
+      <div className="field">
+        <label><MapPin size={12}/>City / Municipality</label>
+        <input list="dl-city" value={addr.city || ""} disabled={!addr.regionCode} autoComplete="off"
+          placeholder={!addr.regionCode ? "Choose region first" : cities.length ? "Type or pick a city" : "Loading…"} onChange={onCity} />
+        <datalist id="dl-city">{cities.map((o) => <option key={o.code} value={o.name} />)}</datalist>
+      </div>
+
+      <div className="field">
+        <label><MapPin size={12}/>Barangay</label>
+        <input list="dl-brgy" value={addr.barangay || ""} disabled={!addr.cityCode} autoComplete="off"
+          placeholder={!addr.cityCode ? "Choose city first" : brgys.length ? "Type or pick a barangay" : "Loading…"} onChange={(e) => setAddr({ ...addr, barangay: e.target.value })} />
+        <datalist id="dl-brgy">{brgys.map((o) => <option key={o.code} value={o.name} />)}</datalist>
+      </div>
+
       <div className="field">
         <label><MapPin size={12}/>Street / unit</label>
         <input value={addr.street} placeholder="House no., street, building" onChange={(e) => setAddr({ ...addr, street: e.target.value })} />
