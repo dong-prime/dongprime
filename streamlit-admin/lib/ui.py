@@ -72,8 +72,8 @@ PAGES = [
 
 
 def nav():
-    """Top 'Menu' button → page links. Mobile-friendly (no sidebar needed)."""
-    with st.popover("☰  Menu", use_container_width=True):
+    """Top menu → page links. Uses an expander (reliable tap target on mobile)."""
+    with st.expander("☰  Menu"):
         for path, label, icon in PAGES:
             try:
                 st.page_link(path, label=label, icon=icon)
