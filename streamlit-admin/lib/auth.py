@@ -11,7 +11,11 @@ def require_auth():
                 st.rerun()
         return
 
-    ui.page_title("Dong Prime", "Admin dashboard")
+    st.write("")
+    ui.brand()
+    st.markdown("<div style='text-align:center;color:#A79D8C;letter-spacing:.2em;"
+                "font-size:11px;text-transform:uppercase;margin:6px 0 18px'>Admin dashboard</div>",
+                unsafe_allow_html=True)
     st.text_input("Password", type="password", key="_pw",
                   on_change=_check, placeholder="Enter admin password")
     st.button("Enter", type="primary", on_click=_check)

@@ -9,6 +9,7 @@ from lib.ui import PH_TZ, peso, ph_date, status_badge
 ui.setup_page("Overview")
 auth.require_auth()
 
+ui.brand()
 ui.page_title("Overview", "Dong Prime Peptides — admin")
 
 try:

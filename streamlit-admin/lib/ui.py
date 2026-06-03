@@ -5,6 +5,9 @@ from . import flow
 
 PH_TZ = timezone(timedelta(hours=8))  # Asia/Manila (UTC+8, no DST)
 
+# Real logo served by the live storefront (single source of truth).
+LOGO_URL = "https://dongprime.vercel.app/assets/dongprime-logo-transparent.png"
+
 
 def peso(n):
     try:
@@ -42,6 +45,16 @@ def status_badge(status):
 def setup_page(title, icon="✦"):
     st.set_page_config(page_title=f"Dong Prime · {title}", page_icon="✦", layout="centered")
     inject_theme()
+    try:
+        st.logo(LOGO_URL, link="https://dongprime.vercel.app")
+    except Exception:
+        pass
+
+
+def brand(width=190):
+    """Centered logo image (login + overview headers)."""
+    c = st.columns([1, 2, 1])[1]
+    c.image(LOGO_URL, use_container_width=True)
 
 
 def inject_theme():

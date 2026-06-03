@@ -13,6 +13,9 @@ products = db.fetch_products()
 for p in products:
     tag = "" if p.get("active") else " · (hidden)"
     with st.expander(f"{p['name']} · {peso(p.get('price'))}{tag}"):
+        img = p.get("image_url") or ""
+        if img:
+            st.image(img if img.startswith("http") else f"https://dongprime.vercel.app{img}", width=120)
         with st.form(f"prod_{p['id']}"):
             name = st.text_input("Name", value=p.get("name") or "")
             price = st.number_input("Price (₱, single vial)", min_value=0, value=int(p.get("price") or 0), step=100)
