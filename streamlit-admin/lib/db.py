@@ -31,10 +31,14 @@ def set_status(order_code, prev_status, new_status, note=""):
     log_status(order_code, prev_status, new_status, note)
 
 
-def order_history(order_code):
+def all_status_history(limit=2000):
+    """All status-change logs, grouped by order_code (one query)."""
     res = (client().table("order_status_history").select("*")
-           .eq("order_code", order_code).order("created_at", desc=True).execute())
-    return res.data or []
+           .order("created_at", desc=True).limit(limit).execute())
+    grouped = {}
+    for r in (res.data or []):
+        grouped.setdefault(r["order_code"], []).append(r)
+    return grouped
 
 
 # ── Products / inventory ────────────────────────────────────────────────────

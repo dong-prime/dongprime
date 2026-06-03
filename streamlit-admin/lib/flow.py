@@ -49,3 +49,40 @@ def units(qty, fmt):
 
 def fmt_display(fmt):
     return f"Box of {BOX_UNITS}" if is_box(fmt) else (fmt or "")
+
+
+def track_steps(delivery, pay_pref):
+    """Customer-facing tracking step labels (mirrors the storefront)."""
+    prepaid = is_prepaid(pay_pref)
+    steps = ["Received"]
+    if prepaid:
+        steps += ["Awaiting payment", "Payment received"]
+    else:
+        steps += ["Confirmed"]
+    steps += ["Preparing"]
+    if delivery == "cod":
+        steps += ["Out for delivery", "Delivered" if prepaid else "Delivered & paid"]
+    else:
+        steps += ["Shipped", "Delivered"]
+    return steps
+
+
+def status_to_step(status, delivery, pay_pref):
+    if is_prepaid(pay_pref):
+        m = {"received": 0, "awaiting_payment": 1, "confirmed": 2, "preparing": 3, "shipped": 4, "delivered": 5}
+    else:
+        m = {"received": 0, "awaiting_payment": 1, "confirmed": 1, "preparing": 2, "shipped": 3, "delivered": 4}
+    return m.get(status, 0)
+
+
+# One-tap next actions per status: (button label, target status).
+def next_actions(status):
+    nxt = {
+        "received": [("✅ Confirm", "confirmed")],
+        "awaiting_payment": [("✅ Mark paid", "confirmed")],
+        "confirmed": [("📦 Start preparing", "preparing")],
+        "preparing": [("🚚 Mark shipped", "shipped")],
+        "shipped": [("🏁 Mark delivered", "delivered")],
+    }.get(status, [])
+    return nxt
+
