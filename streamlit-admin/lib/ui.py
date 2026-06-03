@@ -57,6 +57,34 @@ def brand(width=190):
     c.image(LOGO_URL, use_container_width=True)
 
 
+# Top navigation (works on mobile, where the sidebar is hidden by default).
+PAGES = [
+    ("app.py", "Overview", "📊"),
+    ("pages/1_🧾_Orders.py", "Orders", "🧾"),
+    ("pages/2_💳_Payments.py", "Payments", "💳"),
+    ("pages/3_↩️_Cancellations.py", "Cancellations", "↩️"),
+    ("pages/4_🏷️_Inventory.py", "Inventory", "🏷️"),
+    ("pages/5_📦_Products.py", "Products", "📦"),
+    ("pages/6_👤_Customers.py", "Customers", "👤"),
+    ("pages/7_📈_Reports.py", "Reports", "📈"),
+    ("pages/8_⚙️_Settings.py", "Settings", "⚙️"),
+]
+
+
+def nav():
+    """Top 'Menu' button → page links. Mobile-friendly (no sidebar needed)."""
+    with st.popover("☰  Menu", use_container_width=True):
+        for path, label, icon in PAGES:
+            try:
+                st.page_link(path, label=label, icon=icon)
+            except Exception:
+                pass
+        st.divider()
+        if st.button("Log out", use_container_width=True, key="_logout"):
+            st.session_state.authed = False
+            st.rerun()
+
+
 def inject_theme():
     st.markdown("""
     <style>

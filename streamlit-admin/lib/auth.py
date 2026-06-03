@@ -5,10 +5,7 @@ from . import ui
 
 def require_auth():
     if st.session_state.get("authed"):
-        with st.sidebar:
-            if st.button("Log out", use_container_width=True):
-                st.session_state.authed = False
-                st.rerun()
+        ui.nav()
         return
 
     st.write("")
