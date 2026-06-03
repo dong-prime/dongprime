@@ -60,29 +60,30 @@ def brand(width=190):
 # Top navigation (works on mobile, where the sidebar is hidden by default).
 PAGES = [
     ("app.py", "Overview", "📊"),
-    ("pages/1_🧾_Orders.py", "Orders", "🧾"),
-    ("pages/2_💳_Payments.py", "Payments", "💳"),
-    ("pages/3_↩️_Cancellations.py", "Cancellations", "↩️"),
-    ("pages/4_🏷️_Inventory.py", "Inventory", "🏷️"),
-    ("pages/5_📦_Products.py", "Products", "📦"),
-    ("pages/6_👤_Customers.py", "Customers", "👤"),
-    ("pages/7_📈_Reports.py", "Reports", "📈"),
-    ("pages/8_⚙️_Settings.py", "Settings", "⚙️"),
+    ("pages/1_Orders.py", "Orders", "🧾"),
+    ("pages/2_Payments.py", "Payments", "💳"),
+    ("pages/3_Cancellations.py", "Cancel", "↩️"),
+    ("pages/4_Inventory.py", "Inventory", "🏷️"),
+    ("pages/5_Products.py", "Products", "📦"),
+    ("pages/6_Customers.py", "Customers", "👤"),
+    ("pages/7_Reports.py", "Reports", "📈"),
+    ("pages/8_Settings.py", "Settings", "⚙️"),
 ]
 
 
 def nav():
-    """Top menu → page links. Uses an expander (reliable tap target on mobile)."""
-    with st.expander("☰  Menu"):
-        for path, label, icon in PAGES:
+    """Always-visible button grid → switch_page. Reliable on mobile."""
+    cols = st.columns(3)
+    for i, (path, label, icon) in enumerate(PAGES):
+        if cols[i % 3].button(f"{icon} {label}", key=f"nav_{i}", use_container_width=True):
             try:
-                st.page_link(path, label=label, icon=icon)
+                st.switch_page(path)
             except Exception:
                 pass
-        st.divider()
-        if st.button("Log out", use_container_width=True, key="_logout"):
-            st.session_state.authed = False
-            st.rerun()
+    if st.button("Log out", key="_logout", use_container_width=True):
+        st.session_state.authed = False
+        st.rerun()
+    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
 
 
 def inject_theme():
