@@ -60,45 +60,91 @@ def brand(width=190):
 def inject_theme():
     st.markdown("""
     <style>
-      @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@400;600;800&display=swap');
+      @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@400;500;600;800&display=swap');
       html, body, [class*="css"] { font-family: Inter, system-ui, sans-serif; }
-      .block-container { padding: 1.1rem 0.9rem 3rem; max-width: 760px; }
-      #MainMenu, footer, header [data-testid="stToolbar"] { visibility: hidden; }
 
-      h1, h2, h3 { font-family: Cinzel, serif !important; color: #E7BD59 !important; letter-spacing:.01em; }
-      h1 { font-size: 1.6rem !important; }
+      /* luxury navy bg with soft gold glows (matches the storefront) */
+      .stApp {
+        background:
+          radial-gradient(circle at 12% 0%, rgba(200,146,42,.14), transparent 32%),
+          radial-gradient(circle at 88% 6%, rgba(231,189,89,.09), transparent 30%),
+          radial-gradient(circle at 50% 120%, rgba(200,146,42,.07), transparent 40%),
+          linear-gradient(180deg,#01040B,#07101C 60%,#020712) fixed;
+      }
+      [data-testid="stHeader"] { background: transparent; }
+      .block-container { padding: 0.6rem 0.9rem 4rem; max-width: 760px; }
+      #MainMenu, footer, [data-testid="stToolbar"] { visibility: hidden; }
 
-      /* gold gradient primary buttons */
+      h1,h2,h3 { font-family: Cinzel, serif !important; color:#E7BD59 !important; letter-spacing:.02em; }
+      h3 { font-size: 1.05rem !important; margin-top: 1.2rem !important;
+           border-left: 3px solid #C8922A; padding-left: 10px; }
+      [data-testid="stMarkdownContainer"] p { line-height: 1.55; }
+
+      /* buttons */
+      .stButton > button, .stFormSubmitButton > button, [data-testid="stDownloadButton"] > button {
+        border:1px solid rgba(200,146,42,.5); border-radius:12px; font-weight:700; letter-spacing:.03em;
+        background: rgba(10,25,48,.5); color:#E7BD59; transition:.15s;
+      }
+      .stButton > button:hover { border-color:#E7BD59; box-shadow:0 0 14px rgba(200,146,42,.25); }
       .stButton > button[kind="primary"], .stFormSubmitButton > button {
-        background: linear-gradient(135deg,#7A5010,#E7BD59 50%,#8A6018);
-        color:#070B12; border:0; font-weight:800; letter-spacing:.04em;
+        background: linear-gradient(135deg,#7A5010,#E7BD59 50%,#F4D985 60%,#8A6018) !important;
+        color:#070B12 !important; border:0 !important; font-weight:800 !important;
+        box-shadow:0 8px 22px rgba(200,146,42,.22);
       }
-      .stButton > button { border:1px solid rgba(200,146,42,.45); border-radius:12px; }
 
-      /* metric cards */
+      /* metric cards — gold top accent + glow */
       [data-testid="stMetric"] {
-        background: linear-gradient(180deg,rgba(10,25,48,.8),rgba(5,14,28,.7));
-        border:1px solid rgba(200,146,42,.28); border-radius:16px; padding:14px 16px;
+        position:relative; overflow:hidden;
+        background: linear-gradient(180deg,rgba(11,26,48,.92),rgba(4,11,24,.85));
+        border:1px solid rgba(200,146,42,.3); border-radius:18px; padding:16px 16px 14px;
+        box-shadow:0 10px 30px rgba(0,0,0,.45), inset 0 1px 0 rgba(231,189,89,.12);
       }
-      [data-testid="stMetricValue"] { color:#E7BD59; font-weight:800; }
+      [data-testid="stMetric"]::before { content:""; position:absolute; top:0; left:0; right:0; height:2px;
+        background:linear-gradient(90deg,#7A5010,#E7BD59,#7A5010); }
+      [data-testid="stMetricValue"] { color:#E7BD59; font-weight:800; font-size:1.9rem; }
+      [data-testid="stMetricLabel"] p { color:#A79D8C; text-transform:uppercase; letter-spacing:.12em; font-size:.7rem; }
 
-      /* expanders as cards */
+      /* expanders as luxury cards */
       [data-testid="stExpander"] {
-        border:1px solid rgba(200,146,42,.22); border-radius:16px;
-        background: linear-gradient(180deg,rgba(10,25,48,.55),rgba(5,14,28,.55)); margin-bottom:10px;
+        border:1px solid rgba(200,146,42,.24); border-radius:16px; margin-bottom:11px;
+        background:linear-gradient(180deg,rgba(11,26,48,.6),rgba(4,11,24,.55));
+        box-shadow:0 6px 20px rgba(0,0,0,.35);
       }
-      div[data-testid="stExpander"] summary { font-weight:700; }
+      [data-testid="stExpander"] summary { font-weight:700; padding:6px 4px; }
+      [data-testid="stExpander"] summary:hover { color:#E7BD59; }
+
+      /* segmented control / tabs — gold active */
+      [data-testid="stSegmentedControl"] button { border-radius:10px !important; }
+      [data-testid="stSegmentedControl"] button[aria-checked="true"],
+      [data-testid="stSegmentedControl"] button[aria-selected="true"] {
+        background:linear-gradient(135deg,#7A5010,#E7BD59) !important; color:#070B12 !important; font-weight:800;
+      }
 
       /* inputs */
-      input, textarea, .stSelectbox div[data-baseweb="select"] > div { border-radius:10px !important; }
-      hr { border-color: rgba(200,146,42,.18); }
+      input, textarea, [data-baseweb="select"] > div { border-radius:10px !important; }
+      [data-testid="stTextInput"] input, [data-testid="stNumberInput"] input {
+        background:rgba(2,7,18,.6) !important; border:1px solid rgba(200,146,42,.28) !important; }
+      hr { border-color: rgba(200,146,42,.16); }
       a { color:#E7BD59; }
+
+      /* sidebar */
+      [data-testid="stSidebar"] { background:rgba(3,10,22,.96); border-right:1px solid rgba(200,146,42,.18); }
     </style>
     """, unsafe_allow_html=True)
 
 
-def page_title(text, sub=None):
-    st.markdown(f"<h1 style='margin-bottom:2px'>{text}</h1>", unsafe_allow_html=True)
-    if sub:
-        st.markdown(f"<div style='color:#A79D8C;font-size:13px;margin-bottom:14px'>{sub}</div>",
-                    unsafe_allow_html=True)
+def page_title(text, sub=None, logo=True):
+    img = (f"<img src='{LOGO_URL}' alt='Dong Prime' style='height:40px;width:auto;"
+           f"filter:drop-shadow(0 0 7px rgba(231,189,89,.3))'/>") if logo else ""
+    st.markdown(f"""
+      <div style='display:flex;align-items:center;gap:13px;margin:4px 0 2px'>
+        {img}
+        <div>
+          <div style='font-family:Cinzel,serif;font-weight:700;font-size:1.55rem;color:#E7BD59;
+               letter-spacing:.03em;line-height:1.05'>{text}</div>
+          {f"<div style='color:#A79D8C;font-size:12px;margin-top:3px'>{sub}</div>" if sub else ""}
+        </div>
+      </div>
+      <div style='height:2px;border-radius:2px;margin:12px 0 18px;
+        background:linear-gradient(90deg,rgba(231,189,89,.85),rgba(200,146,42,.25) 55%,transparent)'></div>
+    """, unsafe_allow_html=True)
