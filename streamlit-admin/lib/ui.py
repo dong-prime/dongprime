@@ -71,29 +71,32 @@ PAGES = [
 ]
 
 
-def nav():
-    """Bottom menu that opens UPWARD: when open, the page buttons render above
-    the toggle. Pure buttons (reliable on mobile). Call at the END of each page."""
-    st.markdown("<div style='height:26px'></div>", unsafe_allow_html=True)
+@st.fragment
+def _menu():
+    """Opens upward. As a fragment, toggling reruns ONLY the menu (no page
+    reload / DB re-fetch) → instant response."""
     if st.session_state.get("_menu_open"):
         cols = st.columns(3)
         for i, (path, label, icon) in enumerate(PAGES):
             if cols[i % 3].button(f"{icon} {label}", key=f"nav_{i}", use_container_width=True):
-                try:
-                    st.switch_page(path)
-                except Exception:
-                    pass
+                st.switch_page(path)
         c1, c2 = st.columns(2)
         if c1.button("Log out", key="_logout", use_container_width=True):
             st.session_state.authed = False
-            st.rerun()
+            st.rerun()  # full rerun → re-check auth gate
         if c2.button("✕ Close", key="_menuclose", type="primary", use_container_width=True):
             st.session_state["_menu_open"] = False
-            st.rerun()
+            st.rerun(scope="fragment")
     else:
         if st.button("☰  Menu", key="_menuopen", use_container_width=True):
             st.session_state["_menu_open"] = True
-            st.rerun()
+            st.rerun(scope="fragment")
+
+
+def nav():
+    """Bottom menu. Call at the END of each page."""
+    st.markdown("<div style='height:26px'></div>", unsafe_allow_html=True)
+    _menu()
 
 
 def inject_theme():
