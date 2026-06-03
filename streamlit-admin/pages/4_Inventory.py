@@ -34,3 +34,5 @@ for p in products:
 
 if not products:
     st.info("No products yet.")
+
+ui.nav()

@@ -17,6 +17,7 @@ try:
     profiles = db.fetch_profiles()
 except Exception as e:
     st.error(f"Could not reach the database. Check your secrets.\n\n{e}")
+    ui.nav()
     st.stop()
 
 now = datetime.now(PH_TZ)
@@ -93,3 +94,5 @@ for o in orders[:6]:
     )
 if not orders:
     st.info("No orders yet.")
+
+ui.nav()

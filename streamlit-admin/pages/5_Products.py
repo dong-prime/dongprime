@@ -39,3 +39,5 @@ for p in products:
 st.divider()
 st.caption("To add a brand-new product or change its image, do it in Supabase for now "
            "(image upload comes in Phase 2).")
+
+ui.nav()

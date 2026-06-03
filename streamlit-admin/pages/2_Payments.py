@@ -18,6 +18,7 @@ c2.metric("Receipt uploaded", len(with_proof))
 
 if not queue:
     st.success("No payments waiting. 🎉")
+    ui.nav()
     st.stop()
 
 st.caption("Receipt uploaded first, then the rest.")
@@ -48,3 +49,5 @@ for o in with_proof + no_proof:
         if b2.button("✕ Cancel order", key=f"cx_{code}", use_container_width=True):
             db.set_status(code, o.get("status"), "cancelled", "cancelled at payment stage")
             st.rerun()
+
+ui.nav()

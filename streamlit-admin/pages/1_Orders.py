@@ -182,3 +182,5 @@ for o in shown:
 
 if not shown:
     st.info("Nothing here. Try the **All** tab or clear the search.")
+
+ui.nav()

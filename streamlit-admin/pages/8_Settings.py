@@ -10,6 +10,7 @@ try:
     s = db.fetch_settings()
 except Exception as e:
     st.error(f"Run supabase/dashboard.sql first (settings table missing).\n\n{e}")
+    ui.nav()
     st.stop()
 
 with st.form("settings"):
@@ -35,3 +36,5 @@ with st.form("settings"):
 st.caption("Note: the storefront will read these in Phase 2. For now they're stored here "
            "and used by the dashboard. The bank number shown to customers is still set in "
            "the app's BANK_ACCOUNT until the storefront is wired to read settings.")
+
+ui.nav()

@@ -12,6 +12,7 @@ ui.page_title("Reports", "Sales & order analytics")
 orders = db.fetch_orders(limit=2000)
 if not orders:
     st.info("No orders yet.")
+    ui.nav()
     st.stop()
 
 
@@ -72,3 +73,5 @@ if prod_rows:
 
 st.download_button("⬇ Export orders (CSV)", d.to_csv(index=False).encode("utf-8"),
                    "dongprime_orders.csv", "text/csv", use_container_width=True)
+
+ui.nav()

@@ -72,18 +72,20 @@ PAGES = [
 
 
 def nav():
-    """Always-visible button grid → switch_page. Reliable on mobile."""
-    cols = st.columns(3)
-    for i, (path, label, icon) in enumerate(PAGES):
-        if cols[i % 3].button(f"{icon} {label}", key=f"nav_{i}", use_container_width=True):
-            try:
-                st.switch_page(path)
-            except Exception:
-                pass
-    if st.button("Log out", key="_logout", use_container_width=True):
-        st.session_state.authed = False
-        st.rerun()
-    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+    """Bottom menu: an expander holding a button grid (→ switch_page) + logout.
+    Call at the END of each page so it sits at the bottom of the screen."""
+    st.markdown("<div style='height:26px'></div>", unsafe_allow_html=True)
+    with st.expander("☰  Menu"):
+        cols = st.columns(3)
+        for i, (path, label, icon) in enumerate(PAGES):
+            if cols[i % 3].button(f"{icon} {label}", key=f"nav_{i}", use_container_width=True):
+                try:
+                    st.switch_page(path)
+                except Exception:
+                    pass
+        if st.button("Log out", key="_logout", use_container_width=True):
+            st.session_state.authed = False
+            st.rerun()
 
 
 def inject_theme():

@@ -5,8 +5,7 @@ from . import ui
 
 def require_auth():
     if st.session_state.get("authed"):
-        ui.nav()
-        return
+        return  # nav is rendered at the bottom of each page via ui.nav()
 
     st.write("")
     ui.brand()

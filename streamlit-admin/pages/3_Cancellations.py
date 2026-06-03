@@ -13,6 +13,7 @@ queue = [o for o in orders if o.get("cancel_requested") and o.get("status") not 
 st.metric("Open requests", len(queue))
 if not queue:
     st.success("No pending cancel/refund requests. 🎉")
+    ui.nav()
     st.stop()
 
 for o in queue:
@@ -49,3 +50,5 @@ for o in queue:
                 st.rerun()
             if b2.button("Dismiss request", key=f"dz_{code}", use_container_width=True):
                 db.update_order(code, {"cancel_requested": False}); st.rerun()
+
+ui.nav()

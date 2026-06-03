@@ -49,3 +49,5 @@ for email, os in sorted(guests.items(), key=lambda kv: -spend(kv[1])):
             cu = o.get("customer") or {}
             st.markdown(f"- **{o['order_code']}** · {cu.get('name','')} · {peso(o.get('total'))} · "
                         f"{o.get('status')} · {ph_date(o.get('created_at'), with_time=False)}")
+
+ui.nav()
