@@ -19,6 +19,13 @@ npm-debug.log*
 .env
 .env.*
 !.env.example
+**/.streamlit/secrets.toml
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
 
 # vercel
 .vercel

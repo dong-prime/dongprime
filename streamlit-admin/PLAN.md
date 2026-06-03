@@ -160,6 +160,12 @@ alter table public.order_status_history enable row level security; -- 공개 정
 
 ---
 
+## 5.12 🎨 디자인 원칙 (확정)
+- **모바일 우선**: 사장님이 휴대폰으로 본다 → `layout="centered"`(좁은 폭), 단일 컬럼 스택, 큰 표 대신 **주문 카드/expander**, 터치 친화적 버튼.
+- **럭셔리 네이비/골드** (스토어와 통일): 배경 네이비(#020712/#07101C), 포인트 골드(#C8922A/#E7BD59), 본문 크림(#F3EBD7). 제목은 Cinzel, 본문 Inter.
+- **심플하지만 다 있게**: 군더더기 없는 KPI 카드 + 상태 색배지, Streamlit 기본 메뉴/푸터 숨김, 섹션 명확.
+- 구현: `.streamlit/config.toml` 테마 + `lib/ui.py`의 CSS 주입(폰트/카드/배지).
+
 ## 6. 공통 고려사항 (놓치기 쉬운 것)
 - **시간대**: 모든 시각 **Asia/Manila**로 표시·집계.
 - **금액**: PHP(₱), 천단위 콤마. 박스/낱개 구분 표시.

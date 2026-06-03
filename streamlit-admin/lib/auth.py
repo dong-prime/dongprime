@@ -1,0 +1,30 @@
+"""Single shared-password gate. Call require_auth() at the top of every page."""
+import streamlit as st
+from . import ui
+
+
+def require_auth():
+    if st.session_state.get("authed"):
+        with st.sidebar:
+            if st.button("Log out", use_container_width=True):
+                st.session_state.authed = False
+                st.rerun()
+        return
+
+    ui.page_title("Dong Prime", "Admin dashboard")
+    st.text_input("Password", type="password", key="_pw",
+                  on_change=_check, placeholder="Enter admin password")
+    st.button("Enter", type="primary", on_click=_check)
+    if st.session_state.get("_pw_err"):
+        st.error("Wrong password.")
+    st.stop()
+
+
+def _check():
+    expected = st.secrets.get("ADMIN_PASSWORD", "")
+    if st.session_state.get("_pw") and st.session_state["_pw"] == expected:
+        st.session_state.authed = True
+        st.session_state["_pw_err"] = False
+        st.session_state["_pw"] = ""
+    else:
+        st.session_state["_pw_err"] = True
